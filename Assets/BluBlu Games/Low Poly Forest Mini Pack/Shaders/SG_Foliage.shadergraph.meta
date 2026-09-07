@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 6ddbd91bf9339654284a1576d2a6be94
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: 625f186215c104763be7675aa2d941aa, type: 3}
+AssetOrigin:
+  serializedVersion: 1
+  productId: 386152
+  packageName: Low Poly Forest Mini Pack
+  packageVersion: 1.0
+  assetPath: Assets/BluBlu Games/Low Poly Forest Mini Pack/Shaders/SG_Foliage.shadergraph
+  uploadId: 936326
