@@ -6623,10 +6623,6 @@ PrefabInstance:
       propertyPath: m_Name
       value: Turoriel1
       objectReference: {fileID: 0}
-    - target: {fileID: 5496955475124232088, guid: 0da45fe044b37a82e84931e2b508fdf3, type: 3}
-      propertyPath: m_IsActive
-      value: 1
-      objectReference: {fileID: 0}
     - target: {fileID: 6418079411816500175, guid: 0da45fe044b37a82e84931e2b508fdf3, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
