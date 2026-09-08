@@ -550,24 +550,24 @@ public class MoveBird : MonoBehaviour
         }
     }
 
-    private void OnTriggerEnter(Collider other)
-    {
-        if (!enabled || IsDead) return;
+    //private void OnTriggerEnter(Collider other)
+    //{
+    //    if (!enabled || IsDead) return;
 
-        // Les anneaux (HoopScore) accordent des bonus et ne tuent pas
-        if (other.GetComponent<HoopScore>() != null || other.GetComponentInParent<HoopScore>() != null)
-        {
-            return;
-        }
+    //    // Les anneaux (HoopScore) accordent des bonus et ne tuent pas
+    //    if (other.GetComponent<HoopScore>() != null || other.GetComponentInParent<HoopScore>() != null)
+    //    {
+    //        return;
+    //    }
 
-        // Collision avec obstacles configurés en Trigger (eau, killzones, etc.)
-        if (other.CompareTag("Obstacle") || other.CompareTag("Death") ||
-            other.name.ToLower().Contains("obstacle") || other.name.ToLower().Contains("water"))
-        {
-            Debug.Log($"[MoveBird] Trigger mortel avec {other.gameObject.name} !");
-            Die();
-        }
-    }
+    //    // Collision avec obstacles configurés en Trigger (eau, killzones, etc.)
+    //    if (other.CompareTag("Obstacle") || other.CompareTag("Death") ||
+    //        other.name.ToLower().Contains("obstacle") || other.name.ToLower().Contains("water"))
+    //    {
+    //        Debug.Log($"[MoveBird] Trigger mortel avec {other.gameObject.name} !");
+    //        Die();
+    //    }
+    //}
 
     private void UpdateBoundaries()
     {
