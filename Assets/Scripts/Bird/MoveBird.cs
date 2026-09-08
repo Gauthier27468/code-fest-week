@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
@@ -27,14 +27,34 @@ public class MoveBird : MonoBehaviour
     [Tooltip("Décocher pour forcer le clavier, même si la Kinect envoie des données.")]
     public bool useKinectWhenAvailable = true;
 
+    [Header("Glide & Dive Tuning")]
+    [Tooltip("Taux de chute naturel en vol plané (bras à l'horizontale / neutre clavier). -0.08 correspond au réglage Kinect.")]
+    public float glideSink = -0.08f;
+
+    [Tooltip("Taux de chute en piqué / chute (bras le long du corps / touche descendre). -0.55 correspond au réglage Kinect.")]
+    public float diveSink = -0.55f;
+
+    [Tooltip("Durée de l'impulsion de montée après appui sur la touche saut/battement (en s).")]
+    public float keyboardFlapDuration = 0.4f;
+
     [Header("Animation")]
     public Animator animator;
-    [Range(0.1f, 10f)] public float animationSpeed = 2.5f;
+    [Range(0.1f, 10f)] public float animationSpeed = 1f;
     public bool syncAnimationWithSpeed = true;
+
+    [Header("Animation Thresholds")]
+    [Tooltip("Seuil d'inclinaison/direction pour déclencher l'animation de vol battu (virage).")]
+    public float turnAnimationThreshold = 0.08f;
+
+    [Tooltip("Seuil de montée pour déclencher l'animation de vol battu (montée).")]
+    public float climbAnimationThreshold = 0.05f;
+
+    private static readonly int FlyingHash = Animator.StringToHash("Flying");
 
     private Quaternion initialRotation;
     private float currentRoll = 0f;
     private float currentPitch = 0f;
+    private float keyboardFlapTimer = 0f;
 
     /// <summary>
     /// Écouteur à interroger : celui câblé dans l'inspecteur s'il y en a un, sinon celui créé
@@ -65,6 +85,10 @@ public class MoveBird : MonoBehaviour
                 animator = GetComponentInChildren<Animator>();
             }
         }
+        if (animator != null)
+        {
+            animator.SetBool(FlyingHash, false);
+        }
         initialRotation = transform.localRotation;
         UpdateAnimationSpeed();
     }
@@ -75,7 +99,7 @@ public class MoveBird : MonoBehaviour
         Vector3 input = GetInput();
         Move(input);
         Bank(input);
-        UpdateAnimation();
+        UpdateAnimation(input);
     }
 
     private void OnValidate()
@@ -91,21 +115,50 @@ public class MoveBird : MonoBehaviour
         if (IsKinectDriving) return ActiveKinectSource.Input;
 
         float x = 0f;
-        float y = 0f;
+        float y = glideSink; // Vol plané naturel par défaut (identique à la Kinect bras à l'horizontale)
         float z = 0f;
 
 #if ENABLE_INPUT_SYSTEM
         var keyboard = Keyboard.current;
         if (keyboard != null)
         {
+            // Virage : Q / A / Flèche Gauche (gauche) ou D / Flèche Droite (droite)
             if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) x += 1f;
             if (keyboard.aKey.isPressed || keyboard.qKey.isPressed || keyboard.leftArrowKey.isPressed) x -= 1f;
 
-            if (keyboard.spaceKey.isPressed) y += 1f;
-            if (keyboard.leftCtrlKey.isPressed || keyboard.cKey.isPressed) y -= 1f;
+            // Battement / Montée : Espace ou Flèche Haut
+            bool flapHeld = keyboard.spaceKey.isPressed || keyboard.upArrowKey.isPressed;
+            if (keyboard.spaceKey.wasPressedThisFrame || keyboard.upArrowKey.wasPressedThisFrame)
+            {
+                keyboardFlapTimer = keyboardFlapDuration;
+            }
 
-            if (keyboard.wKey.isPressed || keyboard.zKey.isPressed || keyboard.upArrowKey.isPressed) z += 1f;
-            if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) z -= 1f;
+            // Chute / Piqué : Ctrl, C ou Flèche Bas
+            bool divePressed = keyboard.leftCtrlKey.isPressed || keyboard.cKey.isPressed || keyboard.downArrowKey.isPressed;
+
+            if (flapHeld)
+            {
+                keyboardFlapTimer = keyboardFlapDuration;
+                y = 1f;
+            }
+            else if (keyboardFlapTimer > 0f)
+            {
+                keyboardFlapTimer -= Time.deltaTime;
+                // Décroissance douce de l'impulsion (comme gestures.py lift_impulse)
+                y = Mathf.Clamp01(keyboardFlapTimer / keyboardFlapDuration);
+            }
+            else if (divePressed)
+            {
+                y = diveSink;
+            }
+            else
+            {
+                y = glideSink;
+            }
+
+            // Vitesse : Z / W (accélérer) ou S (ralentir)
+            if (keyboard.wKey.isPressed || keyboard.zKey.isPressed) z += 1f;
+            if (keyboard.sKey.isPressed) z -= 1f;
         }
 
         var gamepad = Gamepad.current;
@@ -113,16 +166,20 @@ public class MoveBird : MonoBehaviour
         {
             Vector2 stick = gamepad.leftStick.ReadValue();
             x += stick.x;
-            y += stick.y;
+            if (Mathf.Abs(stick.y) > 0.1f)
+            {
+                y = stick.y > 0 ? stick.y : Mathf.Lerp(glideSink, diveSink, -stick.y);
+            }
         }
 #else
         x = Input.GetAxis("Horizontal");
         z = Input.GetAxis("Vertical");
-        if (Input.GetKey(KeyCode.Space)) y += 1f;
-        if (Input.GetKey(KeyCode.LeftControl)) y -= 1f;
+        if (Input.GetKey(KeyCode.Space)) y = 1f;
+        else if (Input.GetKey(KeyCode.LeftControl)) y = diveSink;
+        else y = glideSink;
 #endif
 
-        return new Vector3(x, y, z);
+        return new Vector3(Mathf.Clamp(x, -1f, 1f), Mathf.Clamp(y, -1f, 1f), Mathf.Clamp(z, -1f, 1f));
     }
 
     private bool IsBoosting()
@@ -180,9 +237,18 @@ public class MoveBird : MonoBehaviour
         transform.localRotation = initialRotation * Quaternion.Euler(currentPitch, 0f, currentRoll);
     }
 
-    private void UpdateAnimation()
+    private void UpdateAnimation(Vector3 input)
     {
         if (animator == null) return;
+
+        // Logique demandée :
+        // - En mode planage ou en chute -> Flying = false (joue l'animation idle/planage)
+        // - Si l'oiseau tourne OU remonte vers le haut -> Flying = true (joue l'animation Flying/battement)
+        bool isTurning = Mathf.Abs(input.x) > turnAnimationThreshold;
+        bool isClimbing = input.y > climbAnimationThreshold;
+        bool isFlying = isTurning || isClimbing;
+
+        animator.SetBool(FlyingHash, isFlying);
 
         if (syncAnimationWithSpeed && forwardSpeed > 0.01f)
         {

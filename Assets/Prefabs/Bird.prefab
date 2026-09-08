@@ -199,7 +199,7 @@ MonoBehaviour:
   kinectSource: {fileID: 0}
   useKinectWhenAvailable: 1
   animator: {fileID: 0}
-  animationSpeed: 2.5
+  animationSpeed: 1
   syncAnimationWithSpeed: 1
 --- !u!95 &4200508157159545835
 Animator:
