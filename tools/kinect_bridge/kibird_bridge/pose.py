@@ -8,9 +8,18 @@ choisir laquelle suivre.
 nouvelle architecture (`libmediapipe.so` chargée via ctypes) tue le process entier par SIGKILL
 dans ses constructeurs statiques, avant même le moindre appel d'API. Voir README.md, section
 "Blocage mediapipe 1.0.1 (résolu)".
+
+⚠️ RunningMode.VIDEO, pas IMAGE : en mode IMAGE chaque frame est traitée comme une photo
+isolée, sans aucun lien avec la précédente — c'est la cause classique du jitter frame-à-frame
+signalé en JPO (bras immobiles détectés comme un battement). Le mode VIDEO active le tracker
+interne de MediaPipe (ROI + lissage temporel des landmarks d'une frame à l'autre), à la seule
+condition de lui fournir un timestamp strictement croissant à chaque appel — cf. `detect()`.
+Signe qu'IMAGE était un choix par erreur : `min_tracking_confidence` ci-dessous ne fait
+strictement rien en mode IMAGE, il ne s'applique qu'au tracker du mode VIDEO/LIVE_STREAM.
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -57,20 +66,29 @@ class PoseEstimator:
         base_options = mp_python.BaseOptions(model_asset_path=str(model_path))
         options = vision.PoseLandmarkerOptions(
             base_options=base_options,
-            running_mode=vision.RunningMode.IMAGE,
+            running_mode=vision.RunningMode.VIDEO,
             num_poses=num_poses,
             min_pose_detection_confidence=0.5,
             min_pose_presence_confidence=0.5,
             min_tracking_confidence=0.5,
         )
         self._landmarker = vision.PoseLandmarker.create_from_options(options)
+        # Horloge dédiée (monotonic, jamais affectée par un ajustement NTP) pour les timestamps
+        # exigés par le mode VIDEO. `_last_timestamp_ms` garantit la stricte croissance exigée
+        # par MediaPipe même si deux frames arrivent la même milliseconde (capture rapide).
+        self._start_monotonic = time.monotonic()
+        self._last_timestamp_ms = -1
 
     def detect(self, rgb_frame: np.ndarray) -> list[dict[str, PoseLandmark]]:
         """rgb_frame : image RGB (H, W, 3) uint8. Retourne une liste de squelettes détectés,
         chacun étant un dict {nom_articulation: PoseLandmark}.
         """
         mp_image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb_frame)
-        result = self._landmarker.detect(mp_image)
+        timestamp_ms = int((time.monotonic() - self._start_monotonic) * 1000)
+        if timestamp_ms <= self._last_timestamp_ms:
+            timestamp_ms = self._last_timestamp_ms + 1
+        self._last_timestamp_ms = timestamp_ms
+        result = self._landmarker.detect_for_video(mp_image, timestamp_ms)
 
         skeletons = []
         for pose_landmarks in result.pose_landmarks:

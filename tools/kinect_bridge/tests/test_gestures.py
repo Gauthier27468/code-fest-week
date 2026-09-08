@@ -125,14 +125,76 @@ def test_flap_overrides_dive():
         l_wrist=(0.58, 0.6), r_wrist=(0.42, 0.6),
         distance_m=2.0,
     )
-    # Battement : les poignets remontent très vite (mouvement vers le haut = y qui décroît).
-    out = update_gestures(
+    # Battement soutenu sur 3 frames consécutives (lift_trigger_frames) : les poignets montent
+    # vite (mouvement vers le haut = y qui décroît) et le restent, contrairement à un pic isolé.
+    update_gestures(
         state, cfg, now=1 / 30.0, dt=1 / 30.0,
+        l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
+        l_wrist=(0.58, 0.4), r_wrist=(0.42, 0.4),
+        distance_m=2.0,
+    )
+    update_gestures(
+        state, cfg, now=2 / 30.0, dt=1 / 30.0,
         l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
         l_wrist=(0.58, 0.2), r_wrist=(0.42, 0.2),
         distance_m=2.0,
     )
+    out = update_gestures(
+        state, cfg, now=3 / 30.0, dt=1 / 30.0,
+        l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
+        l_wrist=(0.58, 0.0), r_wrist=(0.42, 0.0),
+        distance_m=2.0,
+    )
     assert out.lift > 0.9, f"un battement doit donner une impulsion de montée forte, obtenu {out.lift}"
+
+
+def test_fast_downward_arm_movement_does_not_trigger_flap():
+    """Bras qui descendent vite (transition rapide vers le piqué) ne doivent PAS déclencher
+    un battement/montée : seul un mouvement ASCENDANT rapide doit compter. Verrouille un bug
+    réel où `abs(vy)` déclenchait un battement sur n'importe quel mouvement rapide, montant ou
+    descendant — une cause plausible du "trop de lift" rapporté en JPO."""
+    cfg = GestureConfig()
+    state = GestureState(neutral_distance_m=2.0)
+    update_gestures(
+        state, cfg, now=0.0, dt=1 / 30.0,
+        l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
+        l_wrist=(0.58, 0.3), r_wrist=(0.42, 0.3),  # bras à l'horizontale, en position de départ
+        distance_m=2.0,
+    )
+    out = None
+    for wrist_y in (0.5, 0.7, 0.9):  # les bras descendent vite vers le long du corps
+        out = update_gestures(
+            state, cfg, now=state._prev_t + 1 / 30.0, dt=1 / 30.0,
+            l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
+            l_wrist=(0.58, wrist_y), r_wrist=(0.42, wrist_y),
+            distance_m=2.0,
+        )
+    assert state._flap_streak == 0, "un mouvement descendant rapide ne doit jamais compter comme un battement"
+    assert out.lift < 0, f"bras descendant vite = piqué, pas montée ; obtenu lift={out.lift}"
+
+
+def test_single_frame_velocity_spike_does_not_trigger_flap():
+    """Un pic de vitesse isolé (bruit de détection sur une seule frame, bras par ailleurs
+    immobiles) ne doit PAS être pris pour un battement — c'est le bug rapporté en JPO
+    ("bras baissés, ça détecte des battements inexistants")."""
+    cfg = GestureConfig()
+    state = GestureState(neutral_distance_m=2.0)
+    update_gestures(
+        state, cfg, now=0.0, dt=1 / 30.0,
+        l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
+        l_wrist=(0.58, 0.6), r_wrist=(0.42, 0.6),
+        distance_m=2.0,
+    )
+    # Un unique sursaut (jitter de détection sur une seule frame) : la vitesse dépasse le
+    # seuil, mais une seule fois — le debounce (lift_trigger_frames=3) doit l'ignorer.
+    out = update_gestures(
+        state, cfg, now=1 / 30.0, dt=1 / 30.0,
+        l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
+        l_wrist=(0.58, 0.55), r_wrist=(0.42, 0.55),  # vy ≈ 1.5, largement au-dessus du seuil
+        distance_m=2.0,
+    )
+    assert out.lift < -0.9, f"un sursaut d'une frame ne doit pas déclencher de battement, obtenu {out.lift}"
+    assert state._flap_streak == 1, "le sursaut doit être compté, juste pas encore déclenché"
 
 
 def test_real_world_upright_coordinates_give_no_lean():
@@ -153,11 +215,11 @@ def test_real_world_upright_coordinates_give_no_lean():
 
 
 def test_glide_pose_rises_to_one():
-    cfg = GestureConfig(glide_rise_rate=2.0)
+    cfg = GestureConfig()
     state = GestureState(neutral_distance_m=2.0)
     t = 0.0
     out = None
-    for _ in range(60):  # 2s à 30Hz, largement suffisant pour atteindre 1.0 à rise_rate=2/s
+    for _ in range(60):  # 2s à 30Hz, largement suffisant pour que le filtre One Euro converge
         t += 1 / 30.0
         out = update_gestures(
             state, cfg, now=t, dt=1 / 30.0,

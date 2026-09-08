@@ -72,15 +72,26 @@ def _deadzone(v: float, threshold: float, max_range: float = 1.0) -> float:
 @dataclass
 class GestureConfig:
     lean_deadzone_deg: float = 5.0
-    lean_max_deg: float = 25.0
+    # `lean` vient de l'écart de hauteur des poignets (bras type "ailerons"), pas du buste :
+    # un bras qui monte et l'autre qui descend a naturellement plus de course qu'une simple
+    # inclinaison du buste, donc une plage plus large que l'ancien réglage "épaules" (25°)
+    # pour que la réponse reste graduée sur tout le mouvement au lieu de saturer trop tôt.
+    # Point de départ à ajuster après test réel.
+    lean_max_deg: float = 45.0
     lift_window_s: float = 0.4  # durée de décroissance de l'impulsion de battement
+    lift_trigger_speed: float = 0.5  # vitesse verticale ASCENDANTE (unités normalisées/s) qui signe un battement
+    lift_trigger_frames: int = 3  # frames CONSÉCUTIVES au-dessus du seuil avant de déclencher
+    # (anti-jitter, complémentaire du mode VIDEO de MediaPipe et du filtrage par sens ci-dessus :
+    # un pic isolé d'une ou deux frames ne suffit plus à déclencher un battement fantôme, il
+    # faut un vrai mouvement ascendant soutenu sur ~100ms. À ajuster après test réel : plus ce
+    # nombre est grand, plus les faux positifs baissent mais plus la détection d'un vrai
+    # battement prend de retard — chaque frame en plus coûte 1/30s sur le budget de latence.)
 
     # `glide` (0 = bras le long du corps, 1 = bras tendus à l'horizontale) est une mesure
     # CONTINUE de la hauteur des poignets par rapport aux épaules, pas un seuil tout-ou-rien :
     # un joueur qui lève les bras à mi-hauteur obtient un plané partiel, avec un taux de chute
     # intermédiaire (cf. glide_full_sink / glide_none_dive ci-dessous).
     glide_arm_range_shoulders: float = 1.4  # écart poignet/épaule (en largeurs d'épaules) pour glide=0
-    glide_rise_rate: float = 3.0  # 1/s, vitesse de suivi de `glide` vers sa cible (anti-jitter)
 
     # Taux de chute vertical appliqué à `lift` en l'absence de battement, interpolé linéairement
     # sur `glide` entre ces deux bornes. glide_full_sink doit rester net (un plané qui ne fait
@@ -103,8 +114,10 @@ class GestureState:
     lift_impulse_started_at: float | None = None
     lean_filter: OneEuroFilter = field(default_factory=OneEuroFilter)
     throttle_filter: OneEuroFilter = field(default_factory=OneEuroFilter)
+    glide_filter: OneEuroFilter = field(default_factory=OneEuroFilter)
     _prev_wrist_y: tuple[float, float] | None = None
     _prev_t: float | None = None
+    _flap_streak: int = 0  # frames consécutives au-dessus du seuil de vitesse (debounce)
 
 
 @dataclass
@@ -149,26 +162,32 @@ def update_gestures(
     180° pour un sujet parfaitement droit, et donc une saturation permanente de `lean`.
     """
 
-    # --- lean : angle de la ligne d'épaules ---
-    # dx orienté L->R (donc positif, cf. convention ci-dessus) pour que l'angle reste petit
-    # autour de la posture neutre.
-    dx = l_shoulder[0] - r_shoulder[0]
-    dy = l_shoulder[1] - r_shoulder[1]
-    angle_deg = math.degrees(math.atan2(dy, dx))  # 0° = épaules parfaitement horizontales
-    # angle > 0 <=> épaule gauche du sujet plus basse <=> le sujet penche vers SA gauche,
-    # ce qui doit envoyer l'oiseau vers la gauche de l'écran (lean < 0) : d'où le signe.
+    # --- lean : inclinaison des BRAS (pas du buste) — geste type "ailerons" ---
+    # Bras droit qui monte + bras gauche qui descend = virage à gauche (lean < 0), et plus
+    # l'écart est marqué, plus le virage est prononcé. Même construction géométrique que
+    # l'ancienne version basée sur les épaules (angle de la ligne reliant les deux points),
+    # simplement appliquée aux poignets : ça réutilise directement la logique de signe déjà
+    # vérifiée par test_lean_sign_matches_player_intent.
+    #
+    # dx orienté L->R (donc positif, cf. convention MediaPipe ci-dessus) pour que l'angle
+    # reste petit autour de la posture neutre (bras symétriques).
+    dx = l_wrist[0] - r_wrist[0]
+    dy = l_wrist[1] - r_wrist[1]
+    angle_deg = math.degrees(math.atan2(dy, dx))  # 0° = poignets à la même hauteur
+    # angle > 0 <=> poignet GAUCHE du sujet plus bas (donc bras gauche baissé, droit levé)
+    # <=> le sujet "penche ses ailes" vers SA gauche, ce qui doit envoyer l'oiseau vers la
+    # gauche de l'écran (lean < 0) : d'où le signe, identique à l'ancienne version épaules.
     lean_raw = _clamp(-_deadzone(angle_deg, config.lean_deadzone_deg, config.lean_max_deg))
     lean = _clamp(state.lean_filter(lean_raw, now))
 
-    # --- glide : hauteur des bras, continue, lissée pour absorber le bruit de pose ---
+    # --- glide : hauteur des bras, continue, lissée par le même filtre One Euro que lean et
+    # throttle (moyenne mobile adaptative : lisse fort quand la posture est stable, sans retard
+    # perceptible dès qu'elle change vraiment — cf. commentaire sur OneEuroFilter en tête de
+    # fichier). Remplace l'ancienne rampe à vitesse fixe, incohérente avec le reste des gestes.
     shoulder_width = abs(l_shoulder[0] - r_shoulder[0])
     target = _arm_raise(l_wrist[1], r_wrist[1], l_shoulder[1], r_shoulder[1],
                          shoulder_width, config.glide_arm_range_shoulders)
-    step = config.glide_rise_rate * dt
-    if state.glide_value < target:
-        state.glide_value = min(target, state.glide_value + step)
-    else:
-        state.glide_value = max(target, state.glide_value - step)
+    state.glide_value = _clamp(state.glide_filter(target, now), 0.0, 1.0)
 
     # --- lift : impulsion sur battement descendant (vitesse verticale des poignets) ---
     if state._prev_wrist_y is not None and state._prev_t is not None and dt > 1e-6:
@@ -177,8 +196,19 @@ def update_gestures(
         vy = (avg_wrist_y - prev_avg_y) / dt  # y croît vers le bas -> vy<0 = mouvement vers le haut
         # Battement descendant = poignets qui descendent PUIS déclenchent une montée : on détecte
         # un mouvement vertical rapide et on convertit en impulsion positive (montée) qui décroît.
-        speed = abs(vy)
-        if speed > 0.5:  # seuil de détection d'un battement (unités normalisées/s)
+        # ⚠️ Sens du mouvement, pas seulement sa vitesse : `vy < 0` = poignets qui MONTENT
+        # (y décroît vers le haut dans le repère image). Un `abs(vy)` déclenchait un battement
+        # (donc une montée) sur n'importe quel mouvement rapide, y compris les bras qui
+        # descendent brusquement pour piquer — un bug réel qui gonflait le nombre de "faux"
+        # battements signalés en JPO indépendamment du bruit de pose.
+        if vy < -config.lift_trigger_speed:
+            state._flap_streak += 1
+        else:
+            state._flap_streak = 0
+        # Debounce : un pic de vitesse isolé (bruit de détection sur une seule frame) ne
+        # déclenche rien, il faut plusieurs frames consécutives — cf. commentaire sur
+        # lift_trigger_frames dans GestureConfig.
+        if state._flap_streak >= config.lift_trigger_frames:
             state.lift_impulse = 1.0
             state.lift_impulse_started_at = now
 
