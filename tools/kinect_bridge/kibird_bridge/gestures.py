@@ -79,11 +79,11 @@ class GestureConfig:
     # Point de départ à ajuster après test réel.
     lean_max_deg: float = 45.0
     lift_window_s: float = 0.4  # durée de décroissance de l'impulsion de battement
-    lift_trigger_speed: float = 0.5  # vitesse verticale ASCENDANTE (unités normalisées/s) qui signe un battement
+    lift_trigger_speed: float = 0.5  # vitesse verticale DESCENDANTE (unités normalisées/s) qui signe un battement
     lift_trigger_frames: int = 3  # frames CONSÉCUTIVES au-dessus du seuil avant de déclencher
     # (anti-jitter, complémentaire du mode VIDEO de MediaPipe et du filtrage par sens ci-dessus :
     # un pic isolé d'une ou deux frames ne suffit plus à déclencher un battement fantôme, il
-    # faut un vrai mouvement ascendant soutenu sur ~100ms. À ajuster après test réel : plus ce
+    # faut un vrai mouvement descendant soutenu sur ~100ms. À ajuster après test réel : plus ce
     # nombre est grand, plus les faux positifs baissent mais plus la détection d'un vrai
     # battement prend de retard — chaque frame en plus coûte 1/30s sur le budget de latence.)
 
@@ -213,15 +213,16 @@ def update_gestures(
     if state._prev_wrist_y is not None and state._prev_t is not None and dt > 1e-6:
         avg_wrist_y = (l_wrist[1] + r_wrist[1]) / 2.0
         prev_avg_y = (state._prev_wrist_y[0] + state._prev_wrist_y[1]) / 2.0
-        vy = (avg_wrist_y - prev_avg_y) / dt  # y croît vers le bas -> vy<0 = mouvement vers le haut
-        # Battement descendant = poignets qui descendent PUIS déclenchent une montée : on détecte
-        # un mouvement vertical rapide et on convertit en impulsion positive (montée) qui décroît.
-        # ⚠️ Sens du mouvement, pas seulement sa vitesse : `vy < 0` = poignets qui MONTENT
-        # (y décroît vers le haut dans le repère image). Un `abs(vy)` déclenchait un battement
-        # (donc une montée) sur n'importe quel mouvement rapide, y compris les bras qui
-        # descendent brusquement pour piquer — un bug réel qui gonflait le nombre de "faux"
-        # battements signalés en JPO indépendamment du bruit de pose.
-        if vy < -config.lift_trigger_speed:
+        vy = (avg_wrist_y - prev_avg_y) / dt  # y croît vers le bas -> vy>0 = mouvement vers le bas
+        # Comme un vrai oiseau : c'est le battement VERS LE BAS qui pousse sur l'air et fait
+        # monter, pas la remontée des bras (qui n'est que le geste de "réarmement" entre deux
+        # battements, sans poussée). On détecte un mouvement descendant rapide et on le convertit
+        # en impulsion positive (montée) qui décroît ensuite sur `lift_window_s`.
+        # ⚠️ Sens du mouvement, pas seulement sa vitesse : `vy > 0` = poignets qui DESCENDENT
+        # (y croît vers le bas dans le repère image). Un `abs(vy)` déclencherait un battement
+        # sur n'importe quel mouvement rapide, y compris la remontée des bras entre deux
+        # battements, qui ne doit donner aucune impulsion.
+        if vy > config.lift_trigger_speed:
             state._flap_streak += 1
         else:
             state._flap_streak = 0

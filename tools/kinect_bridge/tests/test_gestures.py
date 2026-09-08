@@ -115,74 +115,76 @@ def test_partial_arm_raise_gives_intermediate_sink():
 
 
 def test_flap_overrides_dive():
-    """Un battement doit faire monter l'oiseau même bras le long du corps (donc en plein piqué)."""
+    """Un battement VERS LE BAS doit faire monter l'oiseau, même s'il finit bras le long du
+    corps (donc en posture de piqué) : comme un vrai oiseau, c'est l'appui pris sur l'air
+    pendant la descente des ailes qui pousse vers le haut."""
     cfg = GestureConfig()
     state = GestureState(neutral_distance_m=2.0)
     # Première frame : établit une position de poignet de référence, sans vitesse encore mesurable.
     update_gestures(
         state, cfg, now=0.0, dt=1 / 30.0,
         l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
-        l_wrist=(0.58, 0.6), r_wrist=(0.42, 0.6),
+        l_wrist=(0.58, 0.0), r_wrist=(0.42, 0.0),
         distance_m=2.0,
     )
-    # Battement soutenu sur 3 frames consécutives (lift_trigger_frames) : les poignets montent
-    # vite (mouvement vers le haut = y qui décroît) et le restent, contrairement à un pic isolé.
+    # Battement soutenu sur 3 frames consécutives (lift_trigger_frames) : les poignets descendent
+    # vite (mouvement vers le bas = y qui croît) et le restent, contrairement à un pic isolé.
     update_gestures(
         state, cfg, now=1 / 30.0, dt=1 / 30.0,
         l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
-        l_wrist=(0.58, 0.4), r_wrist=(0.42, 0.4),
+        l_wrist=(0.58, 0.2), r_wrist=(0.42, 0.2),
         distance_m=2.0,
     )
     update_gestures(
         state, cfg, now=2 / 30.0, dt=1 / 30.0,
         l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
-        l_wrist=(0.58, 0.2), r_wrist=(0.42, 0.2),
+        l_wrist=(0.58, 0.4), r_wrist=(0.42, 0.4),
         distance_m=2.0,
     )
     out = update_gestures(
         state, cfg, now=3 / 30.0, dt=1 / 30.0,
         l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
-        l_wrist=(0.58, 0.0), r_wrist=(0.42, 0.0),
+        l_wrist=(0.58, 0.6), r_wrist=(0.42, 0.6),
         distance_m=2.0,
     )
-    assert out.lift > 0.9, f"un battement doit donner une impulsion de montée forte, obtenu {out.lift}"
+    assert out.lift > 0.9, f"un battement vers le bas doit donner une impulsion de montée forte, obtenu {out.lift}"
 
 
-def test_fast_downward_arm_movement_does_not_trigger_flap():
-    """Bras qui descendent vite (transition rapide vers le piqué) ne doivent PAS déclencher
-    un battement/montée : seul un mouvement ASCENDANT rapide doit compter. Verrouille un bug
-    réel où `abs(vy)` déclenchait un battement sur n'importe quel mouvement rapide, montant ou
-    descendant — une cause plausible du "trop de lift" rapporté en JPO."""
+def test_fast_upward_arm_movement_does_not_trigger_flap():
+    """Bras qui remontent vite (geste de "réarmement" entre deux battements) ne doivent PAS
+    déclencher de montée : seul un mouvement DESCENDANT rapide (l'appui réel sur l'air) doit
+    compter. Sans ce filtre par sens, la remontée des bras entre deux battements donnerait
+    une impulsion en plus du vrai battement descendant, doublant l'effet."""
     cfg = GestureConfig()
     state = GestureState(neutral_distance_m=2.0)
     update_gestures(
         state, cfg, now=0.0, dt=1 / 30.0,
         l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
-        l_wrist=(0.58, 0.3), r_wrist=(0.42, 0.3),  # bras à l'horizontale, en position de départ
+        l_wrist=(0.58, 0.6), r_wrist=(0.42, 0.6),  # bras le long du corps, en position de départ
         distance_m=2.0,
     )
     out = None
-    for wrist_y in (0.5, 0.7, 0.9):  # les bras descendent vite vers le long du corps
+    for wrist_y in (0.5, 0.4, 0.3):  # les bras remontent vite vers l'horizontale
         out = update_gestures(
             state, cfg, now=state._prev_t + 1 / 30.0, dt=1 / 30.0,
             l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
             l_wrist=(0.58, wrist_y), r_wrist=(0.42, wrist_y),
             distance_m=2.0,
         )
-    assert state._flap_streak == 0, "un mouvement descendant rapide ne doit jamais compter comme un battement"
-    assert out.lift < 0, f"bras descendant vite = piqué, pas montée ; obtenu lift={out.lift}"
+    assert state._flap_streak == 0, "un mouvement ascendant rapide ne doit jamais compter comme un battement"
+    assert out.lift < 0, f"remonter les bras sans battement descendant ne doit pas faire monter, obtenu lift={out.lift}"
 
 
 def test_single_frame_velocity_spike_does_not_trigger_flap():
     """Un pic de vitesse isolé (bruit de détection sur une seule frame, bras par ailleurs
     immobiles) ne doit PAS être pris pour un battement — c'est le bug rapporté en JPO
-    ("bras baissés, ça détecte des battements inexistants")."""
+    ("bras levés, ça détecte des battements inexistants")."""
     cfg = GestureConfig()
     state = GestureState(neutral_distance_m=2.0)
     update_gestures(
         state, cfg, now=0.0, dt=1 / 30.0,
         l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
-        l_wrist=(0.58, 0.6), r_wrist=(0.42, 0.6),
+        l_wrist=(0.58, 0.3), r_wrist=(0.42, 0.3),  # bras à l'horizontale
         distance_m=2.0,
     )
     # Un unique sursaut (jitter de détection sur une seule frame) : la vitesse dépasse le
@@ -190,10 +192,10 @@ def test_single_frame_velocity_spike_does_not_trigger_flap():
     out = update_gestures(
         state, cfg, now=1 / 30.0, dt=1 / 30.0,
         l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
-        l_wrist=(0.58, 0.55), r_wrist=(0.42, 0.55),  # vy ≈ 1.5, largement au-dessus du seuil
+        l_wrist=(0.58, 0.35), r_wrist=(0.42, 0.35),  # vy ≈ 1.5, largement au-dessus du seuil
         distance_m=2.0,
     )
-    assert out.lift < -0.4, f"un sursaut d'une frame ne doit pas déclencher de battement, obtenu {out.lift}"
+    assert out.lift > -0.2, f"un sursaut d'une frame ne doit pas déclencher de battement ni casser le plané, obtenu {out.lift}"
     assert state._flap_streak == 1, "le sursaut doit être compté, juste pas encore déclenché"
 
 
