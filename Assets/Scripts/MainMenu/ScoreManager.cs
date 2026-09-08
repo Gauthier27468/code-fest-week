@@ -15,7 +15,27 @@ namespace KiBird.MainMenu
         // Valeurs de démo affichées tant qu'aucune partie n'a été jouée sur ce poste.
         private static readonly int[] SeedScores = { 150, 120, 95, 80, 60 };
 
+        /// <summary>Meilleur score réalisé au cours de la session active (en mémoire, conservé entre les rechargements de scène).</summary>
+        public static int SessionBestScore { get; private set; } = 0;
+
         public static int GetLastScore() => PlayerPrefs.GetInt(LastScoreKey, 0);
+
+        public static int GetSessionBestScore() => SessionBestScore;
+
+        public static int GetBestScore()
+        {
+            List<int> top = GetTopScores();
+            int topScore = (top != null && top.Count > 0) ? top[0] : 0;
+            return Mathf.Max(SessionBestScore, topScore);
+        }
+
+        public static void UpdateSessionBest(int score)
+        {
+            if (score > SessionBestScore)
+            {
+                SessionBestScore = score;
+            }
+        }
 
         public static List<int> GetTopScores()
         {
@@ -33,6 +53,7 @@ namespace KiBird.MainMenu
 
         public static void AddScore(int score)
         {
+            UpdateSessionBest(score);
             PlayerPrefs.SetInt(LastScoreKey, score);
 
             List<int> scores = GetTopScores();

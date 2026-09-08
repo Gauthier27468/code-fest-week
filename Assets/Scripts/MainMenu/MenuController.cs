@@ -18,7 +18,12 @@ namespace KiBird.MainMenu
         [SerializeField] private SilhouetteRig playerSilhouette;
 
         [Header("Texte")]
+        [Tooltip("Texte affichant le score du dernier vol.")]
         [SerializeField] private Text lastScoreText;
+        [Tooltip("Texte affichant le meilleur score (Best Score).")]
+        [SerializeField] private Text bestScoreText;
+        [Tooltip("Titre affiché au-dessus du score (ex: BEST SCORE).")]
+        [SerializeField] private Text scoreTitleText;
         [SerializeField] private Text leaderboardText;
         [SerializeField] private Text promptText;
 
@@ -26,25 +31,35 @@ namespace KiBird.MainMenu
         [SerializeField] private Image startProgressFill;
         [SerializeField] private float holdDurationToStart = 3f;
         [SerializeField] private GameObject menuVisualRoot;
+        [SerializeField] private GameObject menuGameRoot;
 
-        private const string InstructionMessage = "Tendez les bras pendant 3 secondes pour lancer le jeu.";
+        private string InstructionMessage;
 
         private float holdTimer;
         private bool isStarting;
         private MoveBird birdMovement;
 
         public void Configure(DemoKeyboardInput input, KinectStartInputSource kinectInput,
-            SilhouetteRig silhouette, Text lastScore, Text leaderboard, Text prompt, Image progressFill,
-            GameObject visualRoot)
+            SilhouetteRig silhouette, Text lastScore, Text bestScore, Text prompt, Image progressFill,
+            GameObject visualRoot, GameObject gameRoot = null)
         {
             inputProvider = input;
             kinectInputProvider = kinectInput;
             playerSilhouette = silhouette;
             lastScoreText = lastScore;
-            leaderboardText = leaderboard;
+            bestScoreText = bestScore;
             promptText = prompt;
             startProgressFill = progressFill;
             menuVisualRoot = visualRoot;
+            if (gameRoot != null) menuGameRoot = gameRoot;
+        }
+
+        public void Configure(DemoKeyboardInput input, KinectStartInputSource kinectInput,
+            SilhouetteRig silhouette, Text lastScore, Text leaderboard, Text prompt, Image progressFill,
+            GameObject visualRoot)
+        {
+            Configure(input, kinectInput, silhouette, lastScore, null, prompt, progressFill, visualRoot);
+            leaderboardText = leaderboard;
         }
 
         private void Start()
@@ -68,6 +83,12 @@ namespace KiBird.MainMenu
                 Debug.LogWarning("[MenuController] Aucun MoveBird trouvé dans la scène : " +
                                   "l'oiseau ne sera pas bloqué pendant le menu.");
             }
+
+            // Le menu visuel est actif, le menu de jeu (score, temps de survie) est masqué.
+            if (menuVisualRoot != null) menuVisualRoot.SetActive(true);
+            if (menuGameRoot != null) menuGameRoot.SetActive(false);
+
+            InstructionMessage = promptText.text;
         }
 
         private void Update()
@@ -124,20 +145,34 @@ namespace KiBird.MainMenu
             // menu tout de suite, pas de délai supplémentaire ni de changement de scène.
             if (birdMovement != null) birdMovement.enabled = true;
             if (menuVisualRoot != null) menuVisualRoot.SetActive(false);
+            if (menuGameRoot != null) menuGameRoot.SetActive(true);
+
+            // Start bird music !
+            birdMovement.PlayMainMusic();
         }
 
         private void RefreshScores()
         {
-            lastScoreText.text = ScoreManager.GetLastScore().ToString();
-
-            List<int> scores = ScoreManager.GetTopScores();
-            var sb = new StringBuilder();
-            for (int i = 0; i < scores.Count; i++)
+            if (lastScoreText != null)
             {
-                sb.AppendLine($"{i + 1}.  {scores[i]}");
+                lastScoreText.text = ScoreManager.GetLastScore().ToString();
             }
 
-            leaderboardText.text = sb.ToString();
+            if (bestScoreText != null)
+            {
+                bestScoreText.text = ScoreManager.GetBestScore().ToString();
+            }
+
+            if (leaderboardText != null)
+            {
+                List<int> scores = ScoreManager.GetTopScores();
+                var sb = new StringBuilder();
+                for (int i = 0; i < scores.Count; i++)
+                {
+                    sb.AppendLine($"{i + 1}.  {scores[i]}");
+                }
+                leaderboardText.text = sb.ToString();
+            }
         }
     }
 }

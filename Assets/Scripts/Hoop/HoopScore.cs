@@ -14,12 +14,20 @@ public class HoopScore : MonoBehaviour
 
     }
 
+    [Tooltip("Nombre de points bonus attribués lors du franchissement de l'anneau.")]
+    public int bonusPoints = 100;
+
+    private bool isCollected = false;
+
     public void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("Player"))
+        if (isCollected) return;
+
+        if (other.CompareTag("Player") || other.GetComponentInParent<MoveBird>() != null)
         {
-            Debug.Log("Scored!");
-            // You can add scoring logic here, such as updating the score UI or triggering an event.
+            isCollected = true;
+            MoveBird.AddBonusScore(bonusPoints);
+            Debug.Log($"[HoopScore] Anneau franchi ! +{bonusPoints} pts. Nouveau score : {MoveBird.CurrentScore}");
         }
     }
 }

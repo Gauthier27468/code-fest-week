@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
@@ -74,6 +75,37 @@ public class MoveBird : MonoBehaviour
     [Tooltip("Vitesse d'interpolation des limites lors du passage d'un bloc à l'autre (si useBlockBounds est activé).")]
     public float boundsTransitionSpeed = 8f;
 
+    [Header("Score & Survival (Game Over)")]
+    [Tooltip("Points gagnés par mètre parcouru le long de l'axe Z.")]
+    public float scorePerMeter = 1f;
+
+    /// <summary>Score statique actuel du joueur (accessible partout).</summary>
+    public static int CurrentScore = 0;
+
+    /// <summary>Temps de survie actuel en secondes.</summary>
+    public static float SurvivalTime = 0f;
+
+    /// <summary>L'oiseau est-il mort ?</summary>
+    public static bool IsDead = false;
+
+    /// <summary>Événement déclenché à la mort de l'oiseau.</summary>
+    public static event System.Action OnBirdDied;
+
+    private static int bonusScore = 0;
+    private float startZPos = 0f;
+    
+    [Header("UI Menu & Sound Effect")]
+    [SerializeField] private Text scoreText;
+    private AudioSource birdSource;
+    [SerializeField] private AudioClip dieSound;
+    [SerializeField] private AudioClip mainMusic;
+
+    public static void AddBonusScore(int points)
+    {
+        bonusScore += points;
+        CurrentScore += points;
+    }
+
     private static readonly int FlyingHash = Animator.StringToHash("Flying");
 
     private Quaternion initialRotation;
@@ -87,6 +119,13 @@ public class MoveBird : MonoBehaviour
     private float currentMaxHeight;
     private float currentMinHeight;
     private BlockBounds currentBlockBounds;
+    private Rigidbody rb;
+    private bool isGrounded = false;
+    private float deathTime = 0f;
+
+    [Header("Effets Visuels & Mort")]
+    [Tooltip("Préfab ou référence vers le système de particules de plumes (optionnel, auto-généré si vide).")]
+    [SerializeField] private ParticleSystem featherParticlePrefab;
 
     /// <summary>
     /// Écouteur à interroger : celui câblé dans l'inspecteur s'il y en a un, sinon celui créé
@@ -109,6 +148,32 @@ public class MoveBird : MonoBehaviour
 
     private void Awake()
     {
+        CurrentScore = 0;
+        SurvivalTime = 0f;
+        IsDead = false;
+        isGrounded = false;
+        deathTime = 0f;
+        bonusScore = 0;
+        startZPos = transform.position.z;
+        birdSource = GetComponent<AudioSource>();
+
+        // Configuration du Rigidbody dynamique pour détecter les collisions avec le décor (MeshColliders statiques)
+        rb = GetComponent<Rigidbody>();
+        if (rb == null)
+        {
+            rb = gameObject.AddComponent<Rigidbody>();
+        }
+        rb.isKinematic = false;
+        rb.useGravity = false;
+        rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+        rb.constraints = RigidbodyConstraints.FreezeRotation;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
+
+        if (gameObject.CompareTag("Untagged"))
+        {
+            gameObject.tag = "Player";
+        }
+
         if (animator == null)
         {
             animator = GetComponent<Animator>();
@@ -127,10 +192,38 @@ public class MoveBird : MonoBehaviour
         currentMaxHeight = defaultMaxHeight;
         currentMinHeight = defaultMinHeight;
         UpdateAnimationSpeed();
+
+        if (scoreText != null)
+        {
+            scoreText.text = "0";
+        }
+
+
     }
 
     private void Update()
     {
+        if (IsDead) return;
+
+        SurvivalTime += Time.deltaTime;
+        float dist = Mathf.Max(0f, transform.position.z - startZPos);
+        CurrentScore = Mathf.FloorToInt(dist * scorePerMeter) + bonusScore;
+        KiBird.MainMenu.ScoreManager.UpdateSessionBest(CurrentScore);
+
+#if ENABLE_INPUT_SYSTEM
+        if (Keyboard.current != null && Keyboard.current.kKey.wasPressedThisFrame)
+        {
+            Die();
+            return;
+        }
+#else
+        if (Input.GetKeyDown(KeyCode.K))
+        {
+            Die();
+            return;
+        }
+#endif
+
         HandleSpeedInput();
         UpdateBoundaries();
         Vector3 input = GetInput();
@@ -138,6 +231,342 @@ public class MoveBird : MonoBehaviour
         Move(input);
         Bank(input);
         UpdateAnimation(input);
+
+        if (scoreText != null)
+        {
+            scoreText.text = CurrentScore.ToString();
+        }
+    }
+
+    /// <summary>
+    /// Déclenche la mort de l'oiseau, active la gravité physique pour le faire chuter,
+    /// émet un éclat de plumes, enregistre le score et prévient le Game Over.
+    /// </summary>
+    public void Die()
+    {
+        if (IsDead) return;
+
+        IsDead = true;
+
+        if (birdSource != null && dieSound != null)
+        {
+            birdSource.Stop(); // stopping main music if playing
+            birdSource.PlayOneShot(dieSound);
+        }
+
+
+        deathTime = Time.time;
+        forwardSpeed = 0f;
+        horizontalSpeed = 0f;
+        verticalSpeed = 0f;
+
+        // Émission des particules de plumes à l'impact mortel
+        SpawnFeatherExplosion();
+
+        // Désactive l'animateur pour laisser la physique ragdoll/chute libre s'exprimer
+        if (animator != null)
+        {
+            animator.SetBool(FlyingHash, false);
+            animator.enabled = false;
+        }
+
+        // Active la gravité et libère les rotations pour que l'oiseau culbute et tombe sous l'effet de la gravité
+        if (rb != null)
+        {
+            rb.isKinematic = false;
+            rb.useGravity = true;
+            rb.constraints = RigidbodyConstraints.None;
+
+            Vector3 tumbleImpulse = new Vector3(
+                Random.Range(-1.5f, 1.5f),
+                2.5f,
+                -2.5f
+            );
+#if UNITY_6000_0_OR_NEWER
+            rb.linearVelocity = tumbleImpulse;
+            rb.angularVelocity = new Vector3(
+                Random.Range(-4f, 4f),
+                Random.Range(-2f, 2f),
+                Random.Range(-4f, 4f)
+            );
+#else
+            rb.velocity = tumbleImpulse;
+            rb.angularVelocity = new Vector3(
+                Random.Range(-4f, 4f),
+                Random.Range(-2f, 2f),
+                Random.Range(-4f, 4f)
+            );
+#endif
+        }
+
+        // Surveillance de la chute pour figer l'oiseau dès qu'il touche le sol
+        StartCoroutine(MonitorGroundLanding());
+
+        // Sauvegarde immédiate dans le classement persistant
+        KiBird.MainMenu.ScoreManager.AddScore(CurrentScore);
+
+        Debug.Log($"[MoveBird] L'oiseau est mort ! Score final : {CurrentScore} pts | Survie : {SurvivalTime:F1}s");
+        OnBirdDied?.Invoke();
+
+        // Détacher la caméra pour qu'elle suive la chute de manière stable sans vriller avec la carcasse
+        Camera mainCam = GetComponentInChildren<Camera>();
+        if (mainCam != null)
+        {
+            mainCam.transform.SetParent(null, true);
+            StartCoroutine(FollowFallingBird(mainCam.transform));
+        }
+
+        // Si aucun GameOverUI n'est dans la scène, on le crée automatiquement
+        if (GameOverUI.Instance == null)
+        {
+            var go = new GameObject("GameOverManager");
+            go.AddComponent<GameOverUI>();
+        }
+    }
+
+    /// <summary>
+    /// Fige complètement l'oiseau une fois au sol pour éviter tout tremblement,
+    /// glissement infini ou comportement physique étrange.
+    /// </summary>
+    private void FreezeBirdOnGround()
+    {
+        if (isGrounded) return;
+        isGrounded = true;
+
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.useGravity = false;
+#if UNITY_6000_0_OR_NEWER
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+#else
+            rb.velocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+#endif
+            rb.constraints = RigidbodyConstraints.FreezeAll;
+        }
+
+        Debug.Log("[MoveBird] Oiseau stabilisé au sol : physique et mouvements totalement figés.");
+    }
+
+    private System.Collections.IEnumerator MonitorGroundLanding()
+    {
+        // Laisse au moins 0.35s de chute visible
+        yield return new WaitForSeconds(0.35f);
+
+        float timeout = 2.5f;
+        float elapsed = 0.35f;
+
+        while (!isGrounded && IsDead && elapsed < timeout)
+        {
+            elapsed += 0.05f;
+
+            // 1. Raycast sous l'oiseau pour détecter le sol
+            if (Physics.Raycast(transform.position, Vector3.down, out RaycastHit hit, 0.45f))
+            {
+                if (!hit.collider.isTrigger && !hit.collider.CompareTag("Player"))
+                {
+                    FreezeBirdOnGround();
+                    yield break;
+                }
+            }
+
+            // 2. Si l'oiseau a atteint le plancher d'altitude
+            if (transform.position.y <= currentMinHeight + 0.2f)
+            {
+                FreezeBirdOnGround();
+                yield break;
+            }
+
+            // 3. Si la vitesse est devenue minime après la chute
+            if (rb != null)
+            {
+#if UNITY_6000_0_OR_NEWER
+                float speedSqr = rb.linearVelocity.sqrMagnitude;
+#else
+                float speedSqr = rb.velocity.sqrMagnitude;
+#endif
+                if (elapsed > 0.6f && speedSqr < 0.2f)
+                {
+                    FreezeBirdOnGround();
+                    yield break;
+                }
+            }
+
+            yield return new WaitForSeconds(0.05f);
+        }
+
+        // Sécurité finale au bout de 2.5s
+        if (!isGrounded && IsDead)
+        {
+            FreezeBirdOnGround();
+        }
+    }
+
+    private void SpawnFeatherExplosion()
+    {
+        if (featherParticlePrefab != null)
+        {
+            ParticleSystem psInstance = Instantiate(featherParticlePrefab, transform.position, Quaternion.identity);
+            psInstance.Play();
+            Destroy(psInstance.gameObject, 4f);
+            return;
+        }
+
+        // Génération dynamique du burst de plumes
+        GameObject fxObj = new GameObject("FeatherExplosion");
+        fxObj.transform.position = transform.position;
+        fxObj.transform.rotation = Quaternion.identity;
+
+        ParticleSystem ps = fxObj.AddComponent<ParticleSystem>();
+        ParticleSystemRenderer psr = fxObj.GetComponent<ParticleSystemRenderer>();
+
+        Material featherMat = null;
+#if UNITY_EDITOR
+        featherMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Generated/M_Feather.mat");
+#endif
+        if (featherMat == null)
+        {
+            Shader pShader = Shader.Find("Universal Render Pipeline/Particles/Unlit") ?? Shader.Find("Particles/Standard Unlit");
+            if (pShader != null) featherMat = new Material(pShader);
+        }
+        if (featherMat != null)
+        {
+            psr.material = featherMat;
+        }
+
+        var main = ps.main;
+        main.duration = 1.0f;
+        main.loop = false;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(1.8f, 3.2f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(2.5f, 6.5f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.35f, 0.75f);
+        main.startRotation = new ParticleSystem.MinMaxCurve(0f, 360f * Mathf.Deg2Rad);
+        main.gravityModifier = 0.12f; // Flottement aérien naturel de plumes
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.stopAction = ParticleSystemStopAction.Destroy;
+
+        var emission = ps.emission;
+        emission.rateOverTime = 0;
+        emission.SetBursts(new ParticleSystem.Burst[] {
+            new ParticleSystem.Burst(0.0f, (short)35, (short)55)
+        });
+
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Sphere;
+        shape.radius = 0.5f;
+
+        var col = ps.colorOverLifetime;
+        col.enabled = true;
+        Gradient grad = new Gradient();
+        grad.SetKeys(
+            new GradientColorKey[] {
+                new GradientColorKey(Color.white, 0.0f),
+                new GradientColorKey(new Color(0.9f, 0.95f, 1f), 0.5f),
+                new GradientColorKey(new Color(0.75f, 0.85f, 0.95f), 1.0f)
+            },
+            new GradientAlphaKey[] {
+                new GradientAlphaKey(1.0f, 0.0f),
+                new GradientAlphaKey(0.85f, 0.65f),
+                new GradientAlphaKey(0.0f, 1.0f)
+            }
+        );
+        col.color = grad;
+
+        var rot = ps.rotationOverLifetime;
+        rot.enabled = true;
+        rot.z = new ParticleSystem.MinMaxCurve(-150f * Mathf.Deg2Rad, 150f * Mathf.Deg2Rad);
+
+        var sol = ps.sizeOverLifetime;
+        sol.enabled = true;
+        AnimationCurve sizeCurve = new AnimationCurve();
+        sizeCurve.AddKey(0.0f, 0.6f);
+        sizeCurve.AddKey(0.15f, 1.0f);
+        sizeCurve.AddKey(0.75f, 1.0f);
+        sizeCurve.AddKey(1.0f, 0.0f);
+        sol.size = new ParticleSystem.MinMaxCurve(1.0f, sizeCurve);
+
+        ps.Play();
+        Destroy(fxObj, 4.0f);
+    }
+
+    private System.Collections.IEnumerator FollowFallingBird(Transform camTransform)
+    {
+        float duration = 6f;
+        float elapsed = 0f;
+
+        while (elapsed < duration && camTransform != null)
+        {
+            elapsed += Time.deltaTime;
+            Vector3 dirToBird = transform.position - camTransform.position;
+            if (dirToBird.sqrMagnitude > 0.001f)
+            {
+                Quaternion targetRot = Quaternion.LookRotation(dirToBird, Vector3.up);
+                camTransform.rotation = Quaternion.Slerp(camTransform.rotation, targetRot, Time.deltaTime * 3.5f);
+            }
+            yield return null;
+        }
+    }
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        if (!enabled) return;
+
+        if (!IsDead)
+        {
+            // Toute collision solide avec un rocher, montagne ou obstacle tue l'oiseau
+            Debug.Log($"[MoveBird] Collision mortelle avec {collision.gameObject.name} !");
+            Die();
+        }
+        else if (!isGrounded && Time.time - deathTime >= 0.2f)
+        {
+            // Collision secondaire avec le sol après la chute
+            foreach (ContactPoint contact in collision.contacts)
+            {
+                if (contact.normal.y > 0.3f)
+                {
+                    FreezeBirdOnGround();
+                    break;
+                }
+            }
+        }
+    }
+
+    private void OnCollisionStay(Collision collision)
+    {
+        if (!enabled || !IsDead || isGrounded) return;
+
+        if (Time.time - deathTime >= 0.25f)
+        {
+            foreach (ContactPoint contact in collision.contacts)
+            {
+                if (contact.normal.y > 0.3f)
+                {
+                    FreezeBirdOnGround();
+                    break;
+                }
+            }
+        }
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (!enabled || IsDead) return;
+
+        // Les anneaux (HoopScore) accordent des bonus et ne tuent pas
+        if (other.GetComponent<HoopScore>() != null || other.GetComponentInParent<HoopScore>() != null)
+        {
+            return;
+        }
+
+        // Collision avec obstacles configurés en Trigger (eau, killzones, etc.)
+        if (other.CompareTag("Obstacle") || other.CompareTag("Death") ||
+            other.name.ToLower().Contains("obstacle") || other.name.ToLower().Contains("water"))
+        {
+            Debug.Log($"[MoveBird] Trigger mortel avec {other.gameObject.name} !");
+            Die();
+        }
     }
 
     private void UpdateBoundaries()
@@ -196,6 +625,7 @@ public class MoveBird : MonoBehaviour
             if (input.y < 0f)
             {
                 input.y = 0f;
+                Die(); // L'oiseau s'écrase au sol ou dans l'eau
             }
         }
 
@@ -347,6 +777,17 @@ public class MoveBird : MonoBehaviour
             pos.y = Mathf.Clamp(pos.y, currentMinHeight, currentMaxHeight);
             transform.position = pos;
         }
+
+        if (rb != null)
+        {
+#if UNITY_6000_0_OR_NEWER
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+#else
+            rb.velocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+#endif
+        }
     }
 
     private void Bank(Vector3 input)
@@ -427,5 +868,15 @@ public class MoveBird : MonoBehaviour
         Gizmos.DrawLine(new Vector3(maxX, maxH, z - 6f), new Vector3(maxX, maxH, z + 6f));
         Gizmos.DrawLine(new Vector3(maxX, maxH, z + 6f), new Vector3(minX, maxH, z + 6f));
         Gizmos.DrawLine(new Vector3(minX, maxH, z + 6f), new Vector3(minX, maxH, z - 6f));
+    }
+
+    public void PlayMainMusic()
+    {
+        if (birdSource != null && mainMusic != null)
+        {
+            birdSource.clip = mainMusic;
+            birdSource.loop = true;
+            birdSource.Play();
+        }
     }
 }

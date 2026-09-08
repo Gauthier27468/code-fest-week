@@ -8,30 +8,29 @@ using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-// Construit l'écran de démarrage de KiBird de façon procédurale, directement dans la scène de
-// jeu (Blocks.unity) : le menu et le jeu partagent la même scène, le menu se contentant de se
-// masquer une fois le décompte terminé (voir MenuController.StartGame()).
-// Utilisable depuis le menu Editor "KiBird/Build Main Menu Scene" ou en batch mode via
-// -executeMethod KiBirdMenuBuilder.Build
+// Construit l'écran de démarrage de KiBird directement dans la scène de jeu (Blocks.unity).
+// Crée une interface soignée adaptée à une borne d'arcade JPO :
+// - Carte des scores en verre dépoli (Last Score & Best Score)
+// - Capsule de consigne épurée avec décompte réactif
+// - Badge central harmonisé avec l'univers graphique
 public static class KiBirdMenuBuilder
 {
     private const string GameScenePath = "Assets/Scenes/Blocks.unity";
     private const string MenuRootName = "KiBirdMenu";
     private const string LogoPath = "Assets/Art/custom/logo-kibird.png";
-
-    // OS dynamic fonts (Font.CreateDynamicFontFromOSFont) turned out unreliable in the editor :
-    // "Showcard Gothic" was reported as installed but rendered no glyphs at all. A bundled font
-    // file, imported like any other asset, is the robust option. Luckiest Guy is a free
-    // (SIL Open Font License) Google Font with the same chunky, rounded poster-title feel.
     private const string UiFontPath = "Assets/Art/Fonts/LuckiestGuy-Regular.ttf";
 
-    private static readonly Color BackgroundOverlayColor = new Color(0f, 0f, 0f, 0.45f);
-    private static readonly Color MintColor = new Color(0.78f, 0.93f, 0.82f);
-    private static readonly Color BadgeRingColor = new Color(0.07f, 0.14f, 0.25f);
-    private static readonly Color BadgeFigureColor = Color.black;
-    private static readonly Color AccentColor = new Color(1f, 0.85f, 0.15f);
+    // Palette visuelle cohérente avec le logo KiBird et le décor low-poly
+    private static readonly Color BackgroundOverlayColor = new Color(0.02f, 0.05f, 0.10f, 0.25f);
+    private static readonly Color CardBgColor = new Color(0.06f, 0.11f, 0.20f, 0.88f);
+    private static readonly Color CardOutlineColor = new Color(0.35f, 0.65f, 0.95f, 0.35f);
+    private static readonly Color BadgeRingColor = new Color(0.08f, 0.15f, 0.26f, 0.90f);
+    private static readonly Color BadgeInnerColor = new Color(0.12f, 0.21f, 0.34f, 0.95f);
+    private static readonly Color BadgeFigureColor = new Color(0.96f, 0.97f, 0.99f);
+    private static readonly Color AccentColor = new Color(1f, 0.82f, 0.15f);
+    private static readonly Color TextMutedColor = new Color(0.70f, 0.80f, 0.90f);
+    private static readonly Color TextHeaderColor = new Color(0.40f, 0.90f, 0.95f);
     private static readonly Color TextColor = Color.white;
-    private static readonly Color FlapMotionArmColor = new Color(0.5f, 0.5f, 0.5f, 0.55f);
 
     private static Font uiFont;
 
@@ -41,80 +40,160 @@ public static class KiBirdMenuBuilder
         uiFont = AssetDatabase.LoadAssetAtPath<Font>(UiFontPath);
         if (uiFont == null)
         {
-            Debug.LogWarning("KiBird : police introuvable -> " + UiFontPath +
-                              " , utilisation de la police par défaut.");
+            Debug.LogWarning("KiBird : police introuvable -> " + UiFontPath + " , utilisation de la police par défaut.");
             uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         }
 
         Sprite circleSprite = CreateCircleSprite();
+        Sprite roundedRectSprite = CreateRoundedRectSprite();
         Sprite logoSprite = LoadCustomSprite(LogoPath);
 
-        // On ouvre la scène de jeu existante (Bird, blocks, hoops, lumière...) au lieu d'en
-        // créer une vide : le menu vient s'ajouter par-dessus, sans toucher au reste.
         Scene scene = EditorSceneManager.OpenScene(GameScenePath, OpenSceneMode.Single);
 
-        // Un Build() précédent peut avoir déjà ajouté le menu : on le retire d'abord pour que
-        // ré-exécuter cet outil reste idempotent et ne duplique rien.
-        GameObject previousMenuRoot = GameObject.Find(MenuRootName);
-        if (previousMenuRoot != null)
+        GameObject menuRoot = GameObject.Find(MenuRootName);
+        if (menuRoot == null)
         {
-            Object.DestroyImmediate(previousMenuRoot);
+            menuRoot = new GameObject(MenuRootName);
         }
 
-        var menuRoot = new GameObject(MenuRootName);
-
-        // Pas de nouvelle caméra : la scène de jeu en a déjà une (embarquée dans le prefab
-        // Bird), en créer une seconde provoquerait un conflit d'AudioListener / de rendu.
-        // Idem pour l'EventSystem : la scène en a déjà un (venu d'un autre outil/scène fusionnée,
-        // avec InputSystemUIInputModule) - Unity n'en tolère qu'un seul à la fois.
         if (Object.FindFirstObjectByType<EventSystem>() == null)
         {
             BuildEventSystem(menuRoot.transform);
         }
 
-        RectTransform canvasRT = BuildCanvas(out Canvas canvas);
-        canvasRT.SetParent(menuRoot.transform, false);
-        // Pas d'image de fond opaque ici : le menu est superposé à la vraie scène 3D du jeu
-        // (Blocks.unity, caméra du prefab Bird), qui doit rester visible derrière l'UI.
-        CreateBackgroundOverlay(canvasRT);
-        CreateLogo(canvasRT, logoSprite);
+        // Trouver ou créer le Canvas
+        Canvas canvas = menuRoot.GetComponentInChildren<Canvas>();
+        RectTransform canvasRT;
+        if (canvas == null)
+        {
+            canvasRT = BuildCanvas(out canvas);
+            canvasRT.SetParent(menuRoot.transform, false);
+        }
+        else
+        {
+            canvasRT = canvas.GetComponent<RectTransform>();
+        }
 
-        // --- Score + classement (haut gauche) ---
-        RectTransform scorePanel = CreateRect(canvasRT, "ScoreLeaderboardPanel",
+        // Identifier GameMenu s'il existe déjà
+        GameObject gameMenuGO = null;
+        Transform existingGameMenu = canvasRT.Find("GameMenu");
+        if (existingGameMenu != null)
+        {
+            gameMenuGO = existingGameMenu.gameObject;
+        }
+
+        // Trouver ou créer MainMenu (la racine visuelle du menu principal)
+        Transform existingMainMenu = canvasRT.Find("MainMenu");
+        GameObject mainMenuRoot;
+        if (existingMainMenu != null)
+        {
+            // Nettoyer les anciens enfants de MainMenu pour une reconstruction propre
+            for (int i = existingMainMenu.childCount - 1; i >= 0; i--)
+            {
+                Object.DestroyImmediate(existingMainMenu.GetChild(i).gameObject);
+            }
+            mainMenuRoot = existingMainMenu.gameObject;
+        }
+        else
+        {
+            mainMenuRoot = new GameObject("MainMenu", typeof(RectTransform));
+            mainMenuRoot.transform.SetParent(canvasRT, false);
+            RectTransform mmRT = mainMenuRoot.GetComponent<RectTransform>();
+            mmRT.anchorMin = Vector2.zero;
+            mmRT.anchorMax = Vector2.one;
+            mmRT.sizeDelta = Vector2.zero;
+            mmRT.anchoredPosition = Vector2.zero;
+        }
+
+        RectTransform mmTransform = mainMenuRoot.GetComponent<RectTransform>();
+
+        // 1. Voile de fond doux
+        CreateBackgroundOverlay(mmTransform);
+
+        // 2. Logo KiBird
+        CreateLogo(mmTransform, logoSprite);
+
+        // 3. Carte des scores épurée (Last Score & Best Score)
+        RectTransform scoreCard = CreateRect(mmTransform, "ScoreCard",
             new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
-            new Vector2(560f, 560f), new Vector2(60f, -40f));
-        var scoreLayout = scorePanel.gameObject.AddComponent<VerticalLayoutGroup>();
-        scoreLayout.spacing = 8f;
-        scoreLayout.childAlignment = TextAnchor.UpperLeft;
-        scoreLayout.childControlWidth = true;
-        scoreLayout.childControlHeight = false;
-        scoreLayout.childForceExpandWidth = true;
+            new Vector2(300f, 230f), new Vector2(48f, -40f));
+        Image cardImg = scoreCard.gameObject.AddComponent<Image>();
+        cardImg.sprite = roundedRectSprite;
+        cardImg.type = Image.Type.Sliced;
+        cardImg.color = CardBgColor;
+        cardImg.raycastTarget = false;
 
-        CreateText(scorePanel.transform, "ScoreTitle", "YOUR SCORE :", 38, FontStyle.Bold,
-            TextAnchor.UpperLeft, MintColor, 48f);
-        Text lastScoreText = CreateText(scorePanel.transform, "ScoreValue", "9999999!!!", 68, FontStyle.Bold,
-            TextAnchor.UpperLeft, AccentColor, 84f);
-        lastScoreText.gameObject.AddComponent<PulseEffect>();
-        CreateText(scorePanel.transform, "LeaderboardTitle", "LEADER BOARD :", 34, FontStyle.Bold,
-            TextAnchor.UpperLeft, MintColor, 46f);
-        Text leaderboardText = CreateText(scorePanel.transform, "LeaderboardList",
-            "1.  999999\n2.  9866\n3.  8765\n4.  6543\n5.  2345", 30, FontStyle.Normal,
-            TextAnchor.UpperLeft, TextColor, 260f);
+        Outline cardOutline = scoreCard.gameObject.AddComponent<Outline>();
+        cardOutline.effectColor = CardOutlineColor;
+        cardOutline.effectDistance = new Vector2(1.5f, -1.5f);
 
-        // --- Badge circulaire central : silhouette du joueur ---
-        // Centré au milieu de l'écran (comme le logo, aligné en x=0).
-        Vector2 badgeCenter = Vector2.zero;
-        RectTransform badgeRing = CreateRect(canvasRT, "PlayerBadgeRing",
+        var cardLayout = scoreCard.gameObject.AddComponent<VerticalLayoutGroup>();
+        cardLayout.padding = new RectOffset(20, 20, 16, 16);
+        cardLayout.spacing = 6f;
+        cardLayout.childAlignment = TextAnchor.UpperLeft;
+        cardLayout.childControlWidth = true;
+        cardLayout.childControlHeight = false;
+        cardLayout.childForceExpandWidth = true;
+        cardLayout.childForceExpandHeight = false;
+
+        // En-tête : 🏆 SCORES
+        CreateText(scoreCard.transform, "Header", "🏆 SCORES", 22, FontStyle.Bold,
+            TextAnchor.UpperLeft, TextHeaderColor, 28f);
+
+        // Séparateur fin
+        CreateDivider(scoreCard.transform, "Divider1", new Color(1f, 1f, 1f, 0.12f), 2f);
+
+        // Bloc LAST SCORE
+        RectTransform lastBlock = CreateRect(scoreCard.transform, "LastScoreBlock",
+            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        var lastLayout = lastBlock.gameObject.AddComponent<VerticalLayoutGroup>();
+        lastLayout.spacing = 2f;
+        lastLayout.childControlWidth = true;
+        lastLayout.childControlHeight = false;
+        var lastLE = lastBlock.gameObject.AddComponent<LayoutElement>();
+        lastLE.preferredHeight = 58f;
+
+        CreateText(lastBlock.transform, "Title", "LAST SCORE", 15, FontStyle.Bold,
+            TextAnchor.UpperLeft, TextMutedColor, 18f);
+        Text lastScoreText = CreateText(lastBlock.transform, "Value", "0", 32, FontStyle.Bold,
+            TextAnchor.UpperLeft, TextColor, 38f);
+
+        // Séparateur fin
+        CreateDivider(scoreCard.transform, "Divider2", new Color(1f, 1f, 1f, 0.10f), 2f);
+
+        // Bloc BEST SCORE
+        RectTransform bestBlock = CreateRect(scoreCard.transform, "BestScoreBlock",
+            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        var bestLayout = bestBlock.gameObject.AddComponent<VerticalLayoutGroup>();
+        bestLayout.spacing = 2f;
+        bestLayout.childControlWidth = true;
+        bestLayout.childControlHeight = false;
+        var bestLE = bestBlock.gameObject.AddComponent<LayoutElement>();
+        bestLE.preferredHeight = 62f;
+
+        CreateText(bestBlock.transform, "Title", "★ BEST SCORE", 15, FontStyle.Bold,
+            TextAnchor.UpperLeft, new Color(1f, 0.88f, 0.35f), 18f);
+        Text bestScoreText = CreateText(bestBlock.transform, "Value", "0", 36, FontStyle.Bold,
+            TextAnchor.UpperLeft, AccentColor, 40f);
+        bestScoreText.gameObject.AddComponent<PulseEffect>();
+
+        // 4. Badge circulaire central
+        Vector2 badgeCenter = new Vector2(0f, 15f);
+        RectTransform badgeRing = CreateRect(mmTransform, "PlayerBadgeRing",
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(300f, 300f), badgeCenter);
+            new Vector2(260f, 260f), badgeCenter);
         Image ringImg = badgeRing.gameObject.AddComponent<Image>();
         ringImg.sprite = circleSprite;
         ringImg.color = BadgeRingColor;
         ringImg.raycastTarget = false;
 
+        Outline ringOutline = badgeRing.gameObject.AddComponent<Outline>();
+        ringOutline.effectColor = CardOutlineColor;
+        ringOutline.effectDistance = new Vector2(1.5f, -1.5f);
+
         RectTransform progressRT = CreateRect(badgeRing, "StartProgressFill",
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(270f, 270f), Vector2.zero);
+            new Vector2(236f, 236f), Vector2.zero);
         Image progressFill = progressRT.gameObject.AddComponent<Image>();
         progressFill.sprite = circleSprite;
         progressFill.color = AccentColor;
@@ -127,83 +206,66 @@ public static class KiBirdMenuBuilder
 
         RectTransform badgeInner = CreateRect(badgeRing, "Inner",
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(230f, 230f), Vector2.zero);
+            new Vector2(204f, 204f), Vector2.zero);
         Image innerImg = badgeInner.gameObject.AddComponent<Image>();
         innerImg.sprite = circleSprite;
-        innerImg.color = Color.white;
+        innerImg.color = BadgeInnerColor;
         innerImg.raycastTarget = false;
 
         RectTransform silhouetteSlot = CreateRect(badgeInner, "SilhouetteSlot",
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(190f, 190f), Vector2.zero);
+            new Vector2(165f, 165f), Vector2.zero);
         var (silhouetteRoot, silBody, silLeftArm, silRightArm) =
-            CreateSilhouetteParts(silhouetteSlot, "PlayerSilhouette", 190f, BadgeFigureColor, circleSprite);
+            CreateSilhouetteParts(silhouetteSlot, "PlayerSilhouette", 165f, BadgeFigureColor, circleSprite);
         SilhouetteRig playerSilhouette = silhouetteRoot.AddComponent<SilhouetteRig>();
         playerSilhouette.Configure(silBody, silLeftArm, silRightArm);
 
-        // --- Invite / décompte, sous le badge ---
-        Text promptText = CreateText(canvasRT, "PromptText",
-            "Tendez les bras pendant 3 secondes pour lancer le jeu.",
-            40, FontStyle.Bold, TextAnchor.MiddleCenter, TextColor, 90f);
+        // 5. Capsule de consigne / décompte
+        RectTransform promptBanner = CreateRect(mmTransform, "PromptBanner",
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(660f, 62f), new Vector2(0f, -185f));
+        Image bannerImg = promptBanner.gameObject.AddComponent<Image>();
+        bannerImg.sprite = roundedRectSprite;
+        bannerImg.type = Image.Type.Sliced;
+        bannerImg.color = CardBgColor;
+        bannerImg.raycastTarget = false;
+
+        Outline bannerOutline = promptBanner.gameObject.AddComponent<Outline>();
+        bannerOutline.effectColor = CardOutlineColor;
+        bannerOutline.effectDistance = new Vector2(1.5f, -1.5f);
+
+        Text promptText = CreateText(promptBanner.transform, "PromptText",
+            "TENDEZ LES BRAS PENDANT 3 SECONDES POUR VOLER",
+            22, FontStyle.Bold, TextAnchor.MiddleCenter, TextColor, 60f);
         RectTransform promptRT = promptText.GetComponent<RectTransform>();
-        promptRT.anchorMin = new Vector2(0.5f, 0.5f);
-        promptRT.anchorMax = new Vector2(0.5f, 0.5f);
-        promptRT.pivot = new Vector2(0.5f, 0.5f);
-        promptRT.sizeDelta = new Vector2(560f, 90f);
-        promptRT.anchoredPosition = badgeCenter + new Vector2(0f, -200f);
-        Outline promptOutline = promptText.gameObject.AddComponent<Outline>();
-        promptOutline.effectColor = new Color(0f, 0f, 0f, 0.8f);
-        promptOutline.effectDistance = new Vector2(2f, -2f);
+        promptRT.anchorMin = Vector2.zero;
+        promptRT.anchorMax = Vector2.one;
+        promptRT.sizeDelta = Vector2.zero;
+        promptRT.anchoredPosition = Vector2.zero;
 
-        // --- Silhouettes de tutoriel disposées en arc autour du badge ---
-        // Laissées désactivées par défaut (masquées manuellement) : on les garde dans la
-        // hiérarchie, prêtes à être réactivées depuis l'Inspector si besoin, sans avoir à
-        // relancer le builder.
-        GameObject dontFallItem = CreateRadialPoseItem(canvasRT, circleSprite, BirdPose.Glide,
-            new Vector2(640f, 300f), 190f, "DON'T FALL!", new Vector2(120f, -140f), -8f);
+        // 6. MenuController
+        MenuController controller = menuRoot.GetComponentInChildren<MenuController>();
+        DemoKeyboardInput input = menuRoot.GetComponentInChildren<DemoKeyboardInput>();
+        KinectStartInputSource kinectInput = menuRoot.GetComponentInChildren<KinectStartInputSource>();
 
-        GameObject flyUpItem = CreateRadialPoseItem(canvasRT, circleSprite, BirdPose.FlapUp,
-            new Vector2(680f, -20f), 190f, "FLY UP!", new Vector2(90f, -130f), -8f,
-            addFlapMotionArms: true);
+        if (controller == null)
+        {
+            var controllerGO = new GameObject("MenuController");
+            controllerGO.transform.SetParent(menuRoot.transform, false);
+            input = controllerGO.AddComponent<DemoKeyboardInput>();
+            kinectInput = controllerGO.AddComponent<KinectStartInputSource>();
+            controller = controllerGO.AddComponent<MenuController>();
+        }
 
-        GameObject turnItem = CreateRadialPoseItem(canvasRT, circleSprite, BirdPose.TiltLeft,
-            new Vector2(560f, -320f), 170f, "TURN!", new Vector2(150f, -60f), -8f);
-
-        GameObject speedUpItem = CreateSpeedUpItem(canvasRT, circleSprite, new Vector2(-380f, -340f));
-
-        dontFallItem.SetActive(false);
-        flyUpItem.SetActive(false);
-        turnItem.SetActive(false);
-        speedUpItem.SetActive(false);
-
-        // --- Repère clavier de démo (à retirer une fois la Kinect branchée) ---
-        // Masqué par défaut lui aussi.
-        Text debugHint = CreateText(canvasRT, "DebugKeyboardHint",
-            "[Mode test clavier, en attendant la Kinect]  Espace = bras horizontaux   ←/→ = inclinaison   ↑ = battement",
-            22, FontStyle.Italic, TextAnchor.LowerCenter, new Color(1f, 1f, 1f, 0.6f), 40f);
-        RectTransform debugRT = debugHint.GetComponent<RectTransform>();
-        debugRT.anchorMin = new Vector2(0f, 0f);
-        debugRT.anchorMax = new Vector2(1f, 0f);
-        debugRT.pivot = new Vector2(0.5f, 0f);
-        debugRT.anchoredPosition = new Vector2(0f, 16f);
-        debugRT.sizeDelta = new Vector2(0f, 40f);
-        debugHint.gameObject.SetActive(false);
-
-        // --- Objet de logique : entrée démo + contrôleur du menu ---
-        var controllerGO = new GameObject("MenuController");
-        controllerGO.transform.SetParent(menuRoot.transform, false);
-        DemoKeyboardInput input = controllerGO.AddComponent<DemoKeyboardInput>();
-        KinectStartInputSource kinectInput = controllerGO.AddComponent<KinectStartInputSource>();
-        MenuController controller = controllerGO.AddComponent<MenuController>();
-        controller.Configure(input, kinectInput, playerSilhouette, lastScoreText, leaderboardText, promptText,
-            progressFill, menuRoot);
+        controller.Configure(input, kinectInput, playerSilhouette, lastScoreText, bestScoreText, promptText,
+            progressFill, mainMenuRoot, gameMenuGO);
 
         RegisterSceneInBuildSettings();
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene, GameScenePath);
         AssetDatabase.SaveAssets();
 
-        Debug.Log("KiBird : menu ajouté à la scène de jeu -> " + GameScenePath);
+        Debug.Log("KiBird : Menu principal reconstruit avec succès -> " + GameScenePath);
     }
 
     private static void RegisterSceneInBuildSettings()
@@ -237,8 +299,6 @@ public static class KiBirdMenuBuilder
         return canvasGO.GetComponent<RectTransform>();
     }
 
-    // Léger voile semi-transparent (pas opaque) pour que le texte/l'UI reste lisible
-    // par-dessus la scène 3D du jeu, qui doit rester visible derrière.
     private static void CreateBackgroundOverlay(Transform parent)
     {
         RectTransform overlay = CreateRect(parent, "BackgroundOverlay", Vector2.zero, Vector2.one,
@@ -253,7 +313,7 @@ public static class KiBirdMenuBuilder
         if (logoSprite == null) return;
 
         RectTransform logoRT = CreateRect(parent, "Logo", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-            new Vector2(0.5f, 1f), new Vector2(680f, 340f), new Vector2(0f, -10f));
+            new Vector2(0.5f, 1f), new Vector2(620f, 310f), new Vector2(0f, -20f));
         Image img = logoRT.gameObject.AddComponent<Image>();
         img.sprite = logoSprite;
         img.preserveAspect = true;
@@ -318,6 +378,72 @@ public static class KiBirdMenuBuilder
         return text;
     }
 
+    private static void CreateDivider(Transform parent, string name, Color color, float height)
+    {
+        var go = new GameObject(name, typeof(RectTransform), typeof(Image));
+        go.transform.SetParent(parent, false);
+        Image img = go.GetComponent<Image>();
+        img.color = color;
+        img.raycastTarget = false;
+        var le = go.AddComponent<LayoutElement>();
+        le.preferredHeight = height;
+        le.flexibleWidth = 1f;
+    }
+
+    private static Sprite CreateRoundedRectSprite()
+    {
+        const string dir = "Assets/Art/Generated";
+        const string pngPath = dir + "/rounded_rect.png";
+
+        if (!File.Exists(pngPath))
+        {
+            Directory.CreateDirectory(dir);
+            const int size = 128;
+            const int radius = 28;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    int cx = x < radius ? radius : (x >= size - radius ? size - radius - 1 : x);
+                    int cy = y < radius ? radius : (y >= size - radius ? size - radius - 1 : y);
+                    float d = Vector2.Distance(new Vector2(x, y), new Vector2(cx, cy));
+                    float alpha = Mathf.Clamp01(radius - d + 1f);
+                    tex.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+                }
+            }
+
+            tex.Apply();
+            File.WriteAllBytes(pngPath, tex.EncodeToPNG());
+            Object.DestroyImmediate(tex);
+            AssetDatabase.ImportAsset(pngPath);
+        }
+
+        var importer = (TextureImporter)AssetImporter.GetAtPath(pngPath);
+        if (importer != null)
+        {
+            bool dirty = false;
+            if (importer.textureType != TextureImporterType.Sprite)
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                dirty = true;
+            }
+            if (importer.spriteBorder != new Vector4(28, 28, 28, 28))
+            {
+                importer.spriteBorder = new Vector4(28, 28, 28, 28);
+                dirty = true;
+            }
+            if (dirty)
+            {
+                EditorUtility.SetDirty(importer);
+                importer.SaveAndReimport();
+            }
+        }
+
+        return AssetDatabase.LoadAssetAtPath<Sprite>(pngPath);
+    }
+
     private static Sprite CreateCircleSprite()
     {
         const string dir = "Assets/Art/Generated";
@@ -348,12 +474,18 @@ public static class KiBirdMenuBuilder
         }
 
         var importer = (TextureImporter)AssetImporter.GetAtPath(pngPath);
-        importer.textureType = TextureImporterType.Sprite;
-        importer.spriteImportMode = SpriteImportMode.Single;
-        importer.alphaIsTransparency = true;
-        importer.mipmapEnabled = false;
-        EditorUtility.SetDirty(importer);
-        importer.SaveAndReimport();
+        if (importer != null)
+        {
+            if (importer.textureType != TextureImporterType.Sprite)
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                importer.spriteImportMode = SpriteImportMode.Single;
+                importer.alphaIsTransparency = true;
+                importer.mipmapEnabled = false;
+                EditorUtility.SetDirty(importer);
+                importer.SaveAndReimport();
+            }
+        }
 
         return AssetDatabase.LoadAssetAtPath<Sprite>(pngPath);
     }
@@ -413,111 +545,5 @@ public static class KiBirdMenuBuilder
         img.raycastTarget = false;
 
         return rt;
-    }
-
-    // Regroupe figure + étiquette sous un même conteneur (retourné) afin qu'on puisse les
-    // masquer ensemble d'un seul SetActive(false).
-    private static GameObject CreateRadialPoseItem(Transform parent, Sprite circleSprite, BirdPose pose,
-        Vector2 figurePos, float figureSize, string label, Vector2 labelOffset, float labelRotation,
-        bool addFlapMotionArms = false)
-    {
-        RectTransform container = CreateRect(parent, "TutorialItem_" + label, new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
-
-        RectTransform figureSlot = CreateRect(container, "PoseFigure_" + label, new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(figureSize, figureSize), figurePos);
-        var (root, body, leftArm, rightArm) =
-            CreateSilhouetteParts(figureSlot, "Figure", figureSize, MintColor, circleSprite);
-        SilhouetteRig.ApplyStaticPose(body, leftArm, rightArm, pose);
-
-        if (addFlapMotionArms)
-        {
-            CreateFlapMotionArms(root.transform, figureSize, FlapMotionArmColor);
-        }
-
-        CreateRotatedLabel(container, "Label_" + label, label, figurePos + labelOffset, labelRotation);
-
-        return container.gameObject;
-    }
-
-    // Deuxième paire de bras grise, translucide et pointant vers le bas : superposée aux bras
-    // normaux, elle suggère le battement (position basse pendant que la pose figée montre la
-    // position haute), sans avoir besoin d'animation.
-    private static void CreateFlapMotionArms(Transform root, float height, Color color)
-    {
-        float torsoHeight = height * 0.5f;
-        float torsoWidth = height * 0.2f;
-        float headSize = height * 0.26f;
-        float armLength = height * 0.46f;
-        float armThickness = height * 0.1f;
-        float torsoY = -headSize * 0.3f;
-        float shoulderY = torsoY + torsoHeight * 0.36f;
-        const float armAngleDown = 70f;
-
-        RectTransform leftArm = CreateSilhouetteImage(root, "FlapArmLeft", null, color,
-            new Vector2(1f, 0.5f), new Vector2(armLength, armThickness), new Vector2(-torsoWidth / 2f, shoulderY));
-        leftArm.localEulerAngles = new Vector3(0f, 0f, armAngleDown);
-
-        RectTransform rightArm = CreateSilhouetteImage(root, "FlapArmRight", null, color,
-            new Vector2(0f, 0.5f), new Vector2(armLength, armThickness), new Vector2(torsoWidth / 2f, shoulderY));
-        rightArm.localEulerAngles = new Vector3(0f, 0f, -armAngleDown);
-    }
-
-    private static void CreateRotatedLabel(Transform parent, string name, string label, Vector2 position,
-        float rotation)
-    {
-        Text labelText = CreateText(parent, name, label, 34, FontStyle.Bold, TextAnchor.MiddleCenter, AccentColor,
-            60f);
-        labelText.gameObject.AddComponent<PulseEffect>();
-        RectTransform labelRT = labelText.GetComponent<RectTransform>();
-        labelRT.anchorMin = new Vector2(0.5f, 0.5f);
-        labelRT.anchorMax = new Vector2(0.5f, 0.5f);
-        labelRT.pivot = new Vector2(0.5f, 0.5f);
-        labelRT.sizeDelta = new Vector2(300f, 60f);
-        labelRT.anchoredPosition = position;
-        labelRT.localEulerAngles = new Vector3(0f, 0f, rotation);
-
-        Outline outline = labelText.gameObject.AddComponent<Outline>();
-        outline.effectColor = new Color(0f, 0f, 0f, 0.85f);
-        outline.effectDistance = new Vector2(2f, -2f);
-    }
-
-    private static void CreateArrowGlyph(Transform parent, string name, string glyph, Vector2 position,
-        float rotation)
-    {
-        Text arrowText = CreateText(parent, name, glyph, 44, FontStyle.Bold, TextAnchor.MiddleCenter, AccentColor,
-            50f);
-        RectTransform rt = arrowText.GetComponent<RectTransform>();
-        rt.anchorMin = new Vector2(0.5f, 0.5f);
-        rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(60f, 60f);
-        rt.anchoredPosition = position;
-        rt.localEulerAngles = new Vector3(0f, 0f, rotation);
-    }
-
-    private static GameObject CreateSpeedUpItem(Transform parent, Sprite circleSprite, Vector2 centerPos)
-    {
-        RectTransform container = CreateRect(parent, "TutorialItem_SpeedUp", new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
-
-        RectTransform mainSlot = CreateRect(container, "SpeedFigureMain", new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(180f, 180f), centerPos);
-        var (_, mainBody, mainLeftArm, mainRightArm) =
-            CreateSilhouetteParts(mainSlot, "Figure", 180f, MintColor, circleSprite);
-        SilhouetteRig.ApplyStaticPose(mainBody, mainLeftArm, mainRightArm, BirdPose.Neutral);
-
-        RectTransform companionSlot = CreateRect(container, "SpeedFigureCompanion", new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(110f, 110f),
-            centerPos + new Vector2(95f, -10f));
-        var (_, compBody, compLeftArm, compRightArm) =
-            CreateSilhouetteParts(companionSlot, "Figure", 110f, Color.white, circleSprite);
-        SilhouetteRig.ApplyStaticPose(compBody, compLeftArm, compRightArm, BirdPose.Neutral);
-
-        CreateArrowGlyph(container, "SpeedArrow", "↙", centerPos + new Vector2(15f, -110f), -15f);
-
-        CreateRotatedLabel(container, "Label_SpeedUp", "SPEED UP!!!", centerPos + new Vector2(150f, -110f), -8f);
-
-        return container.gameObject;
     }
 }
