@@ -192,22 +192,15 @@ MonoBehaviour:
   horizontalSpeed: 7
   verticalSpeed: 5
   boostMultiplier: 1.75
-  minForwardSpeed: 1
-  maxForwardSpeed: 50
-  speedStep: 1
   enableBanking: 1
-  maxRollAngle: 25
-  maxPitchAngle: 15
-  rotationSmoothSpeed: 5
-  birdAnimator: {fileID: 0}
+  bankAngle: 25
+  pitchAngle: 15
+  rotationSpeed: 5
+  kinectSource: {fileID: 0}
+  useKinectWhenAvailable: 1
+  animator: {fileID: 0}
   animationSpeed: 2.5
-  syncAnimationWithMoveSpeed: 1
-  minAnimationSpeed: 0.2
-  maxAnimationSpeed: 8
-  animSpeedStep: 0.25
-  clampPosition: 0
-  horizontalLimits: {x: -20, y: 20}
-  verticalLimits: {x: 0.5, y: 20}
+  syncAnimationWithSpeed: 1
 --- !u!95 &4200508157159545835
 Animator:
   serializedVersion: 7
