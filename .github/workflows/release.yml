@@ -17,6 +17,14 @@ jobs:
         with:
           lfs: true
 
+      - name: Increase Docker default shared memory
+        run: |
+          sudo jq '. + {"default-shm-size": "2G"}' /etc/docker/daemon.json > /tmp/daemon.json \
+            || echo '{"default-shm-size": "2G"}' > /tmp/daemon.json
+          sudo mv /tmp/daemon.json /etc/docker/daemon.json
+          sudo systemctl restart docker
+          docker run --rm alpine df -h /dev/shm
+
       - uses: actions/cache@v3
         with:
           path: Library
