@@ -118,5 +118,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HoopScore
   bonusPoints: 100
-  collectSound: {fileID: 0}
+  collectSound: {fileID: 8300000, guid: 50f4e163e5aa4ccdafe52818361ed2b5, type: 3}
+  soundVolume: 1
   collectEffectPrefab: {fileID: 0}

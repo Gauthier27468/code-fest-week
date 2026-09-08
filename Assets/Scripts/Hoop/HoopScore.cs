@@ -14,8 +14,12 @@ public class HoopScore : MonoBehaviour
     public int bonusPoints = 100;
 
     [Header("Audio & Effets")]
-    [Tooltip("Son joué lors du franchissement (optionnel).")]
+    [Tooltip("Son joué lors du franchissement (optionnel, auto-chargé si vide).")]
     public AudioClip collectSound;
+
+    [Tooltip("Volume du son de collecte.")]
+    [Range(0f, 1f)]
+    public float soundVolume = 1.0f;
 
     [Tooltip("Effet de particules personnalisé instancié à la collecte (optionnel, auto-généré si vide).")]
     public GameObject collectEffectPrefab;
@@ -25,6 +29,13 @@ public class HoopScore : MonoBehaviour
 
     private void Awake()
     {
+        if (collectSound == null)
+        {
+#if UNITY_EDITOR
+            collectSound = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/AssetStore/Sounds/hoop_collect.wav");
+#endif
+        }
+
         triggerCollider = GetComponent<Collider>();
         if (triggerCollider is BoxCollider box)
         {
@@ -70,7 +81,8 @@ public class HoopScore : MonoBehaviour
         // Son de collecte
         if (collectSound != null)
         {
-            AudioSource.PlayClipAtPoint(collectSound, transform.position, 1f);
+            Vector3 soundPos = Camera.main != null ? Camera.main.transform.position : transform.position;
+            AudioSource.PlayClipAtPoint(collectSound, soundPos, soundVolume);
         }
 
         // Effet visuel de collecte
