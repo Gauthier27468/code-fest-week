@@ -27,6 +27,48 @@ def _hip_mid_pixel(skeleton: dict, width: int, height: int) -> tuple[int, int, f
     return int(mx * width), int(my * height), mx, my
 
 
+def _select_front_skeleton(
+    skeletons: list[dict], capture, depth_mm, width: int, height: int, no_depth: bool,
+) -> tuple[dict | None, float, float | None, float | None]:
+    """Choisit, parmi les squelettes détectés, celui le plus proche de la Kinect.
+
+    MediaPipe trie ses détections par proéminence dans l'IMAGE RGB (taille apparente,
+    netteté), pas par profondeur : un passant qui traverse derrière le joueur peut très bien
+    apparaître comme `skeletons[0]` s'il est mieux cadré. Utiliser la vraie profondeur Kinect
+    (déjà disponible via `capture.median_depth_at`, cf. capture.py) pour ne retenir que la
+    personne la plus en avant règle ce cas — AGENTS.md exige un verrouillage strict sur un
+    seul joueur et d'ignorer les intrusions.
+
+    Retourne (squelette, distance_m, hip_x, hip_y). `distance_m` vaut 0.0 (profondeur
+    inconnue) si aucun squelette n'a de profondeur valide, auquel cas on retombe sur la
+    détection la plus proéminente plutôt que de perdre le joueur pour un simple trou IR.
+    """
+    best_skeleton = None
+    best_distance = None
+    best_hip = (None, None)
+    for skeleton in skeletons:
+        px, py, hip_x, hip_y = _hip_mid_pixel(skeleton, width, height)
+        distance = (
+            _shoulder_width_distance_fallback(skeleton)
+            if no_depth
+            else capture.median_depth_at(depth_mm, px, py)
+        )
+        if distance <= 0.0:
+            continue  # profondeur invalide (trou IR) : impossible de comparer, on ignore
+        if best_distance is None or distance < best_distance:
+            best_skeleton, best_distance, best_hip = skeleton, distance, (hip_x, hip_y)
+
+    if best_skeleton is not None:
+        return best_skeleton, best_distance, best_hip[0], best_hip[1]
+
+    if not skeletons:
+        return None, 0.0, None, None
+
+    skeleton = skeletons[0]
+    _, _, hip_x, hip_y = _hip_mid_pixel(skeleton, width, height)
+    return skeleton, 0.0, hip_x, hip_y
+
+
 def _shoulder_width_distance_fallback(skeleton: dict) -> float:
     """Estimation grossière par échelle apparente, pour développer SANS Kinect branchée.
 
@@ -246,16 +288,10 @@ def run_live(args: argparse.Namespace) -> None:
             last_t = now
 
             skeletons = pose_estimator.detect(frame.rgb)
-            candidate = skeletons[0] if skeletons else None
-
-            distance = 0.0
-            hip_x = hip_y = None
-            if candidate is not None:
-                px, py, hip_x, hip_y = _hip_mid_pixel(candidate, frame.rgb.shape[1], frame.rgb.shape[0])
-                if args.no_depth:
-                    distance = _shoulder_width_distance_fallback(candidate)
-                else:
-                    distance = capture.median_depth_at(frame.depth_mm, px, py)
+            candidate, distance, hip_x, hip_y = _select_front_skeleton(
+                skeletons, capture, frame.depth_mm,
+                frame.rgb.shape[1], frame.rgb.shape[0], args.no_depth,
+            )
 
             tracking_result = tracker.update(distance, hip_x, hip_y, now=now)
 

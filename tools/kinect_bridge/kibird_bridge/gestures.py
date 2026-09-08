@@ -93,6 +93,15 @@ class GestureConfig:
     # intermédiaire (cf. glide_full_sink / glide_none_dive ci-dessous).
     glide_arm_range_shoulders: float = 1.4  # écart poignet/épaule (en largeurs d'épaules) pour glide=0
 
+    # Courbe de réponse de `glide` (pas une simple droite) : humainement, un joueur qui croit
+    # tendre les bras à l'horizontale les a presque toujours un peu plus bas que les épaules
+    # (fatigue, imprécision du geste). Avec un mapping linéaire, ce petit écart — pourtant
+    # anodin visuellement — coûtait déjà une chute perceptible. L'exposant aplatit la courbe
+    # près de glide=1 (un léger affaissement reste presque du plané plein) et la creuse près de
+    # glide=0 (bras vraiment bas -> la chute augmente vite), sans changer les bornes (1 quand
+    # les poignets sont à hauteur d'épaule, 0 au-delà de `glide_arm_range_shoulders`).
+    glide_falloff_power: float = 2.2
+
     # Taux de chute vertical appliqué à `lift` en l'absence de battement, interpolé linéairement
     # sur `glide` entre ces deux bornes. glide_full_sink doit rester net (un plané qui ne fait
     # pas du tout descendre l'oiseau ne se sent pas comme un plané) ; glide_none_dive doit être
@@ -129,18 +138,23 @@ class GestureOutput:
 
 
 def _arm_raise(l_wrist_y, r_wrist_y, l_shoulder_y, r_shoulder_y, shoulder_width: float,
-               max_range_shoulders: float) -> float:
+               max_range_shoulders: float, falloff_power: float = 1.0) -> float:
     """Hauteur des bras, continue : 0.0 = le long du corps, 1.0 = tendus à l'horizontale.
 
     Normalisé par la largeur d'épaules à l'image (pas un seuil fixe en coordonnées
     normalisées) : cette largeur varie avec la distance au capteur exactement comme le
     reste du squelette, donc le geste reste calibré pareil à 1m ou à 4m de la Kinect.
+
+    `falloff_power` > 1 courbe la réponse (cf. GestureConfig.glide_falloff_power) : tolérant
+    près de la posture cible (poignets à hauteur d'épaule), de plus en plus punitif au fur et
+    à mesure que les bras descendent.
     """
     wrist_mid_y = (l_wrist_y + r_wrist_y) / 2.0
     shoulder_mid_y = (l_shoulder_y + r_shoulder_y) / 2.0
     offset = abs(wrist_mid_y - shoulder_mid_y)
     scale = max(shoulder_width, 1e-6) * max_range_shoulders
-    return _clamp(1.0 - offset / scale, 0.0, 1.0)
+    ratio = _clamp(offset / scale, 0.0, 1.0)
+    return _clamp(1.0 - ratio ** falloff_power, 0.0, 1.0)
 
 
 def update_gestures(
@@ -186,7 +200,8 @@ def update_gestures(
     # fichier). Remplace l'ancienne rampe à vitesse fixe, incohérente avec le reste des gestes.
     shoulder_width = abs(l_shoulder[0] - r_shoulder[0])
     target = _arm_raise(l_wrist[1], r_wrist[1], l_shoulder[1], r_shoulder[1],
-                         shoulder_width, config.glide_arm_range_shoulders)
+                         shoulder_width, config.glide_arm_range_shoulders,
+                         config.glide_falloff_power)
     state.glide_value = _clamp(state.glide_filter(target, now), 0.0, 1.0)
 
     # --- lift : impulsion sur battement descendant (vitesse verticale des poignets) ---
