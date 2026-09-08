@@ -9,20 +9,28 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: c98fa24d3c9fa9aa1a9f31e6b687aaa8, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c98fa24d3c9fa9aa1a9f31e6b687aaa8, type: 3}
       propertyPath: m_LocalScale.y
-      value: 5
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c98fa24d3c9fa9aa1a9f31e6b687aaa8, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: c98fa24d3c9fa9aa1a9f31e6b687aaa8, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 4.27164
+      value: 3.717
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: c98fa24d3c9fa9aa1a9f31e6b687aaa8, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 5.05
+      value: 5.555
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: c98fa24d3c9fa9aa1a9f31e6b687aaa8, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 6.25935
+      value: 24.924364
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: c98fa24d3c9fa9aa1a9f31e6b687aaa8, type: 3}
       propertyPath: m_LocalRotation.w
@@ -109,3 +117,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 52ef57e87366e92eaab6bc203968f430, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HoopScore
+  bonusPoints: 100
+  collectSound: {fileID: 0}
+  collectEffectPrefab: {fileID: 0}

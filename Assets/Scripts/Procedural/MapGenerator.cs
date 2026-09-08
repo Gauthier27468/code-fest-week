@@ -282,6 +282,52 @@ public class MapGenerator : MonoBehaviour
         GameObject instance = Instantiate(slot.prefab, pos, Quaternion.identity, parent);
         instance.name = $"[{slot.index:D2}] {slot.prefab.name} (Z={slot.zPosition:F0})";
         slot.instance = instance;
+
+        // Si c'est le bloc de fin, garantir que BirdNestTrigger est bien présent sur Bird Nest
+        if (slot.prefab == endingPrefab || instance.name.IndexOf("Ending", System.StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            SetupEndingBlockNest(instance);
+        }
+    }
+
+    private void SetupEndingBlockNest(GameObject endingInstance)
+    {
+        if (endingInstance == null) return;
+        BirdNestTrigger existingTrigger = endingInstance.GetComponentInChildren<BirdNestTrigger>(true);
+        if (existingTrigger != null) return;
+
+        // Recherche du nid dans les enfants
+        Transform nest = endingInstance.transform.Find("Content/Bird Nest") ?? endingInstance.transform.Find("Bird Nest");
+        if (nest == null)
+        {
+            foreach (Transform child in endingInstance.GetComponentsInChildren<Transform>(true))
+            {
+                if (child.name.IndexOf("Nest", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    nest = child;
+                    break;
+                }
+            }
+        }
+
+        if (nest != null)
+        {
+            Collider col = nest.GetComponent<Collider>();
+            if (col == null)
+            {
+                BoxCollider box = nest.gameObject.AddComponent<BoxCollider>();
+                box.isTrigger = true;
+                box.size = new Vector3(4f, 3f, 4f);
+                box.center = new Vector3(0f, 0.5f, 0f);
+            }
+            else
+            {
+                col.isTrigger = true;
+            }
+
+            nest.gameObject.AddComponent<BirdNestTrigger>();
+            Debug.Log($"[MapGenerator] BirdNestTrigger configuré automatiquement sur '{nest.name}' dans le bloc de fin.");
+        }
     }
 
     private void UpdateDestruction(float birdZ)

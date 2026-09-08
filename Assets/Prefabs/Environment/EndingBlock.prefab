@@ -241,7 +241,7 @@ Transform:
   m_GameObject: {fileID: 6682998991905966088}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0.7069834, z: 0.70723015, w: 0}
-  m_LocalPosition: {x: 13.51, y: 5.4, z: 24.11}
+  m_LocalPosition: {x: 13.51, y: 4.04, z: 24.11}
   m_LocalScale: {x: 400, y: 400.00006, z: 400}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -632,7 +632,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 317248090511566141, guid: 38dc92bbbacc7c148af156dbfbd95c00, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 6.55
+      value: 5.19
       objectReference: {fileID: 0}
     - target: {fileID: 317248090511566141, guid: 38dc92bbbacc7c148af156dbfbd95c00, type: 3}
       propertyPath: m_LocalPosition.z
@@ -1058,7 +1058,8 @@ PrefabInstance:
       propertyPath: m_Name
       value: SM_RockWall_02 (2)
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 2421154801892943478, guid: d559d0654d8a203419aa3a17350cee76, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []
@@ -1932,7 +1933,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 81eef7bb2531b394b9dd2eccb4d53501, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 6.95
+      value: 5.5899997
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 81eef7bb2531b394b9dd2eccb4d53501, type: 3}
       propertyPath: m_LocalPosition.z
@@ -1970,13 +1971,18 @@ PrefabInstance:
       propertyPath: m_Name
       value: Bird Nest
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: -5754084199372789682, guid: 81eef7bb2531b394b9dd2eccb4d53501, type: 3}
+    - {fileID: -7511558181221131132, guid: 81eef7bb2531b394b9dd2eccb4d53501, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 81eef7bb2531b394b9dd2eccb4d53501, type: 3}
       insertIndex: -1
       addedObject: {fileID: 6606851538039235162}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 81eef7bb2531b394b9dd2eccb4d53501, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 5105623254499579278}
   m_SourcePrefab: {fileID: 100100000, guid: 81eef7bb2531b394b9dd2eccb4d53501, type: 3}
 --- !u!1 &5105623254499579277 stripped
 GameObject:
@@ -2002,8 +2008,24 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.24, y: 0.06, z: 0.11}
-  m_Center: {x: 4.656613e-10, y: 0, z: -0.0006568945}
+  m_Size: {x: 0.23, y: 0.04, z: 0.12}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &5105623254499579278
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5105623254499579277}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e48ab69213504179bc37f610488ae412, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BirdNestTrigger
+  winBonusPoints: 500
+  victoryEffectPrefab: {fileID: 0}
+  autoExpandCollider: 1
+  targetColliderSize: {x: 4, y: 3, z: 4}
 --- !u!4 &5589250674192518967 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 81eef7bb2531b394b9dd2eccb4d53501, type: 3}
@@ -2035,7 +2057,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4917242437301349843, guid: d559d0654d8a203419aa3a17350cee76, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 1.58
+      value: 0.21999991
       objectReference: {fileID: 0}
     - target: {fileID: 4917242437301349843, guid: d559d0654d8a203419aa3a17350cee76, type: 3}
       propertyPath: m_LocalPosition.z
@@ -2469,7 +2491,8 @@ PrefabInstance:
       propertyPath: m_Name
       value: SM_RockWall_02 (1)
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 2421154801892943478, guid: d559d0654d8a203419aa3a17350cee76, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []

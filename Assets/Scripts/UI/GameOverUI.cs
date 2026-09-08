@@ -28,15 +28,21 @@ public class GameOverUI : MonoBehaviour
 
     [Header("Éléments d'Interface (Optionnels - auto-créés si vides)")]
     public GameObject rootPanel;
+    public Text titleText;
     public Text scoreText;
     public Text survivalTimeText;
     public Text countdownText;
     public Image backgroundOverlay;
+    public Image cardBg;
 
+    [Header("Sons de Fin de Partie")]
     public AudioSource gameOverSound;
+    public AudioClip defeatSound;
+    public AudioClip victorySound;
 
     private float countdownTimer;
     private bool isGameOverActive = false;
+    private bool isVictory = false;
 
     private void Awake()
     {
@@ -61,6 +67,13 @@ public class GameOverUI : MonoBehaviour
             }
         }
 
+        if (victorySound == null)
+        {
+#if UNITY_EDITOR
+            victorySound = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/AssetStore/Sounds/victory.wav");
+#endif
+        }
+
         EnsureUIExists();
 
         if (rootPanel != null)
@@ -72,24 +85,44 @@ public class GameOverUI : MonoBehaviour
     private void OnEnable()
     {
         MoveBird.OnBirdDied += HandleBirdDied;
+        MoveBird.OnBirdWon += HandleBirdWon;
     }
 
     private void OnDisable()
     {
         MoveBird.OnBirdDied -= HandleBirdDied;
+        MoveBird.OnBirdWon -= HandleBirdWon;
     }
 
     private void HandleBirdDied()
     {
-        ShowGameOver();
+        ShowGameOver(false);
     }
 
-    public void ShowGameOver()
+    private void HandleBirdWon()
+    {
+        ShowVictory();
+    }
+
+    /// <summary>
+    /// Affiche l'écran de victoire en vert avec le son triomphal et le score final.
+    /// </summary>
+    public void ShowVictory()
+    {
+        ShowGameOver(true);
+    }
+
+    /// <summary>
+    /// Affiche l'écran de fin de partie (Victoire ou Défaite).
+    /// </summary>
+    public void ShowGameOver(bool isVictory = false)
     {
         if (isGameOverActive) return;
         isGameOverActive = true;
+        this.isVictory = isVictory;
         countdownTimer = autoResetDelay;
 
+        ResolveReferences();
         EnsureUIExists();
 
         if (rootPanel != null)
@@ -97,23 +130,108 @@ public class GameOverUI : MonoBehaviour
             rootPanel.SetActive(true);
         }
 
-        // Lecture du son Game Over
-        if (gameOverSound != null)
-            gameOverSound.Play();
+        // Palette de couleurs & Sons : Vert pour la victoire, Bleu/Orange pour la défaite
+        if (isVictory)
+        {
+            if (titleText != null)
+            {
+                titleText.text = "VICTOIRE !";
+                titleText.color = new Color(0.2f, 0.95f, 0.45f); // Vert émeraude éclatant
+            }
+
+            if (cardBg != null)
+            {
+                cardBg.color = new Color(0.04f, 0.22f, 0.12f, 0.96f); // Fond carte vert forêt
+            }
+            else if (rootPanel != null)
+            {
+                foreach (var img in rootPanel.GetComponentsInChildren<Image>(true))
+                {
+                    if (img != backgroundOverlay)
+                    {
+                        img.color = new Color(0.04f, 0.22f, 0.12f, 0.96f);
+                    }
+                }
+            }
+
+            if (backgroundOverlay != null)
+            {
+                backgroundOverlay.color = new Color(0.01f, 0.10f, 0.05f, 0.88f);
+            }
+
+            // Lecture du son de victoire
+            AudioClip clip = victorySound;
+            if (clip == null)
+            {
+#if UNITY_EDITOR
+                clip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/AssetStore/Sounds/victory.wav");
+#endif
+            }
+
+            if (clip != null)
+            {
+                if (gameOverSound != null)
+                {
+                    gameOverSound.Stop();
+                    gameOverSound.PlayOneShot(clip);
+                }
+                else
+                {
+                    AudioSource.PlayClipAtPoint(clip, Camera.main != null ? Camera.main.transform.position : Vector3.zero);
+                }
+            }
+        }
+        else
+        {
+            if (titleText != null)
+            {
+                titleText.text = "GAME OVER";
+                titleText.color = new Color(1f, 0.85f, 0.15f); // Jaune / orange
+            }
+
+            if (cardBg != null)
+            {
+                cardBg.color = new Color(0.07f, 0.14f, 0.25f, 0.95f); // Fond carte bleu nuit
+            }
+
+            if (backgroundOverlay != null)
+            {
+                backgroundOverlay.color = new Color(0.04f, 0.08f, 0.15f, 0.88f);
+            }
+
+            // Lecture du son Game Over standard
+            AudioClip clip = defeatSound;
+            if (clip == null && gameOverSound != null && gameOverSound.clip != null)
+            {
+                clip = gameOverSound.clip;
+            }
+
+            if (clip != null && gameOverSound != null)
+            {
+                gameOverSound.Stop();
+                gameOverSound.PlayOneShot(clip);
+            }
+            else if (gameOverSound != null)
+            {
+                gameOverSound.Play();
+            }
+        }
 
         // Formatage du score
         if (scoreText != null)
         {
-            scoreText.text = $"SCORE : {MoveBird.CurrentScore:N0} PTS";
+            string label = isVictory ? "SCORE FINAL" : "SCORE";
+            scoreText.text = $"{label} : {MoveBird.CurrentScore:N0} PTS";
         }
 
-        // Formatage du temps de survie
+        // Formatage du temps de vol / survie
         if (survivalTimeText != null)
         {
             int totalSeconds = Mathf.FloorToInt(MoveBird.SurvivalTime);
             int minutes = totalSeconds / 60;
             int seconds = totalSeconds % 60;
-            survivalTimeText.text = $"TEMPS DE SURVIE : {minutes:D2}:{seconds:D2}";
+            string label = isVictory ? "TEMPS DE VOL" : "TEMPS DE SURVIE";
+            survivalTimeText.text = $"{label} : {minutes:D2}:{seconds:D2}";
         }
 
         UpdateCountdownLabel();
@@ -144,7 +262,8 @@ public class GameOverUI : MonoBehaviour
         if (countdownText != null)
         {
             int remaining = Mathf.Max(1, Mathf.CeilToInt(countdownTimer));
-            countdownText.text = $"Nouvelle partie dans {remaining}s...";
+            string label = isVictory ? "Nouvelle partie dans" : "Nouvelle partie dans";
+            countdownText.text = $"{label} {remaining}s...";
         }
     }
 
@@ -175,10 +294,107 @@ public class GameOverUI : MonoBehaviour
     }
 
     /// <summary>
+    /// Résout automatiquement les références UI si elles n'ont pas été assignées dans l'inspecteur.
+    /// </summary>
+    private void ResolveReferences()
+    {
+        if (rootPanel == null)
+        {
+            Transform panelTr = transform.Find("GameOverMenu") ?? transform.Find("GameOverPanel");
+            if (panelTr != null) rootPanel = panelTr.gameObject;
+        }
+
+        if (rootPanel != null)
+        {
+            if (titleText == null)
+            {
+                foreach (var txt in rootPanel.GetComponentsInChildren<Text>(true))
+                {
+                    if (txt.name.IndexOf("Title", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        txt.text.Contains("GAME OVER") || txt.text.Contains("VICTOIRE"))
+                    {
+                        titleText = txt;
+                        break;
+                    }
+                }
+            }
+
+            if (cardBg == null)
+            {
+                foreach (var img in rootPanel.GetComponentsInChildren<Image>(true))
+                {
+                    if (img.name.IndexOf("Card", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        cardBg = img;
+                        break;
+                    }
+                }
+            }
+
+            if (backgroundOverlay == null)
+            {
+                Transform bgTr = rootPanel.transform.Find("BackgroundOverlay");
+                if (bgTr != null)
+                {
+                    backgroundOverlay = bgTr.GetComponent<Image>();
+                }
+                if (backgroundOverlay == null)
+                {
+                    backgroundOverlay = rootPanel.GetComponent<Image>();
+                }
+            }
+            else if (cardBg == null && backgroundOverlay.name.IndexOf("Card", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                cardBg = backgroundOverlay;
+                backgroundOverlay = rootPanel.GetComponent<Image>();
+            }
+
+            if (scoreText == null)
+            {
+                foreach (var txt in rootPanel.GetComponentsInChildren<Text>(true))
+                {
+                    if (txt.name.IndexOf("Score", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        scoreText = txt;
+                        break;
+                    }
+                }
+            }
+
+            if (survivalTimeText == null)
+            {
+                foreach (var txt in rootPanel.GetComponentsInChildren<Text>(true))
+                {
+                    if (txt.name.IndexOf("Time", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        txt.name.IndexOf("Survival", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        survivalTimeText = txt;
+                        break;
+                    }
+                }
+            }
+
+            if (countdownText == null)
+            {
+                foreach (var txt in rootPanel.GetComponentsInChildren<Text>(true))
+                {
+                    if (txt.name.IndexOf("Countdown", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        countdownText = txt;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Construit dynamiquement l'arborescence UI complète si l'utilisateur n'a pas câblé de Canvas pré-existant.
     /// </summary>
     private void EnsureUIExists()
     {
+        ResolveReferences();
+
         if (rootPanel != null && scoreText != null && survivalTimeText != null && countdownText != null)
         {
             return;
@@ -231,11 +447,17 @@ public class GameOverUI : MonoBehaviour
         cardRT.anchorMax = new Vector2(0.5f, 0.5f);
         cardRT.anchoredPosition = Vector2.zero;
 
-        Image cardBg = cardGO.AddComponent<Image>();
-        cardBg.color = new Color(0.07f, 0.14f, 0.25f, 0.95f);
+        if (cardBg == null)
+        {
+            cardBg = cardGO.AddComponent<Image>();
+            cardBg.color = new Color(0.07f, 0.14f, 0.25f, 0.95f);
+        }
 
         // Titre "GAME OVER"
-        CreateTextElement(cardGO.transform, "GameOverTitle", "GAME OVER", 64, new Color(1f, 0.85f, 0.15f), new Vector2(0, 150), new Vector2(700, 80));
+        if (titleText == null)
+        {
+            titleText = CreateTextElement(cardGO.transform, "GameOverTitle", "GAME OVER", 64, new Color(1f, 0.85f, 0.15f), new Vector2(0, 150), new Vector2(700, 80));
+        }
 
         // Score
         if (scoreText == null)
