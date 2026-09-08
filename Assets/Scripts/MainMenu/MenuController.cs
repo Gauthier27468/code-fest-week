@@ -14,6 +14,7 @@ namespace KiBird.MainMenu
     {
         [Header("Références")]
         [SerializeField] private DemoKeyboardInput inputProvider;
+        [SerializeField] private KinectStartInputSource kinectInputProvider;
         [SerializeField] private SilhouetteRig playerSilhouette;
 
         [Header("Texte")]
@@ -32,10 +33,12 @@ namespace KiBird.MainMenu
         private bool isStarting;
         private MoveBird birdMovement;
 
-        public void Configure(DemoKeyboardInput input, SilhouetteRig silhouette, Text lastScore,
-            Text leaderboard, Text prompt, Image progressFill, GameObject visualRoot)
+        public void Configure(DemoKeyboardInput input, KinectStartInputSource kinectInput,
+            SilhouetteRig silhouette, Text lastScore, Text leaderboard, Text prompt, Image progressFill,
+            GameObject visualRoot)
         {
             inputProvider = input;
+            kinectInputProvider = kinectInput;
             playerSilhouette = silhouette;
             lastScoreText = lastScore;
             leaderboardText = leaderboard;
@@ -54,16 +57,30 @@ namespace KiBird.MainMenu
             // Le jeu tourne déjà (blocs, hoops, environnement...) mais l'oiseau reste immobile
             // tant que le menu n'a pas laissé la main.
             birdMovement = Object.FindFirstObjectByType<MoveBird>();
-            if (birdMovement != null) birdMovement.enabled = false;
+            if (birdMovement != null)
+            {
+                birdMovement.enabled = false;
+            }
+            else
+            {
+                // Si ça ne trouve rien, l'oiseau reste piloté dès le chargement de la scène :
+                // symptôme typique d'un "démarrage automatique" alors que le menu est affiché.
+                Debug.LogWarning("[MenuController] Aucun MoveBird trouvé dans la scène : " +
+                                  "l'oiseau ne sera pas bloqué pendant le menu.");
+            }
         }
 
         private void Update()
         {
             if (isStarting) return;
 
-            bool present = inputProvider.IsPlayerPresent;
-            BirdPose pose = inputProvider.CurrentPose;
-            bool charging = present && pose == BirdPose.Glide;
+            // Deux façons indépendantes de démarrer : clavier (Espace, debug/animateur) ou pose
+            // "bras en T" devant la Kinect. Il suffit que l'une des deux soit tenue 3 secondes.
+            bool keyboardCharging = inputProvider != null && inputProvider.IsPlayerPresent &&
+                                     inputProvider.CurrentPose == BirdPose.Glide;
+            bool kinectCharging = kinectInputProvider != null && kinectInputProvider.IsPlayerPresent &&
+                                   kinectInputProvider.CurrentPose == BirdPose.Glide;
+            bool charging = keyboardCharging || kinectCharging;
 
             UpdateStartProgress(charging);
             UpdatePrompt(charging);

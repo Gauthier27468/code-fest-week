@@ -193,9 +193,10 @@ public static class KiBirdMenuBuilder
         var controllerGO = new GameObject("MenuController");
         controllerGO.transform.SetParent(menuRoot.transform, false);
         DemoKeyboardInput input = controllerGO.AddComponent<DemoKeyboardInput>();
+        KinectStartInputSource kinectInput = controllerGO.AddComponent<KinectStartInputSource>();
         MenuController controller = controllerGO.AddComponent<MenuController>();
-        controller.Configure(input, playerSilhouette, lastScoreText, leaderboardText, promptText, progressFill,
-            menuRoot);
+        controller.Configure(input, kinectInput, playerSilhouette, lastScoreText, leaderboardText, promptText,
+            progressFill, menuRoot);
 
         RegisterSceneInBuildSettings();
         EditorSceneManager.MarkSceneDirty(scene);
