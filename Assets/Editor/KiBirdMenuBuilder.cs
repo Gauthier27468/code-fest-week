@@ -18,7 +18,6 @@ public static class KiBirdMenuBuilder
     private const string GameScenePath = "Assets/Scenes/Blocks.unity";
     private const string MenuRootName = "KiBirdMenu";
     private const string LogoPath = "Assets/Art/custom/logo-kibird.png";
-    private const string BackgroundPath = "Assets/Art/custom/mock-background.png";
 
     // OS dynamic fonts (Font.CreateDynamicFontFromOSFont) turned out unreliable in the editor :
     // "Showcard Gothic" was reported as installed but rendered no glyphs at all. A bundled font
@@ -26,7 +25,6 @@ public static class KiBirdMenuBuilder
     // (SIL Open Font License) Google Font with the same chunky, rounded poster-title feel.
     private const string UiFontPath = "Assets/Art/Fonts/LuckiestGuy-Regular.ttf";
 
-    private static readonly Color SkyColor = new Color(0.36f, 0.66f, 0.86f);
     private static readonly Color BackgroundOverlayColor = new Color(0f, 0f, 0f, 0.45f);
     private static readonly Color MintColor = new Color(0.78f, 0.93f, 0.82f);
     private static readonly Color BadgeRingColor = new Color(0.07f, 0.14f, 0.25f);
@@ -50,7 +48,6 @@ public static class KiBirdMenuBuilder
 
         Sprite circleSprite = CreateCircleSprite();
         Sprite logoSprite = LoadCustomSprite(LogoPath);
-        Sprite backgroundSprite = LoadCustomSprite(BackgroundPath);
 
         // On ouvre la scène de jeu existante (Bird, blocks, hoops, lumière...) au lieu d'en
         // créer une vide : le menu vient s'ajouter par-dessus, sans toucher au reste.
@@ -68,11 +65,18 @@ public static class KiBirdMenuBuilder
 
         // Pas de nouvelle caméra : la scène de jeu en a déjà une (embarquée dans le prefab
         // Bird), en créer une seconde provoquerait un conflit d'AudioListener / de rendu.
-        BuildEventSystem(menuRoot.transform);
+        // Idem pour l'EventSystem : la scène en a déjà un (venu d'un autre outil/scène fusionnée,
+        // avec InputSystemUIInputModule) - Unity n'en tolère qu'un seul à la fois.
+        if (Object.FindFirstObjectByType<EventSystem>() == null)
+        {
+            BuildEventSystem(menuRoot.transform);
+        }
 
         RectTransform canvasRT = BuildCanvas(out Canvas canvas);
         canvasRT.SetParent(menuRoot.transform, false);
-        CreateBackground(canvasRT, backgroundSprite);
+        // Pas d'image de fond opaque ici : le menu est superposé à la vraie scène 3D du jeu
+        // (Blocks.unity, caméra du prefab Bird), qui doit rester visible derrière l'UI.
+        CreateBackgroundOverlay(canvasRT);
         CreateLogo(canvasRT, logoSprite);
 
         // --- Score + classement (haut gauche) ---
@@ -232,22 +236,10 @@ public static class KiBirdMenuBuilder
         return canvasGO.GetComponent<RectTransform>();
     }
 
-    private static void CreateBackground(Transform parent, Sprite backgroundSprite)
+    // Léger voile semi-transparent (pas opaque) pour que le texte/l'UI reste lisible
+    // par-dessus la scène 3D du jeu, qui doit rester visible derrière.
+    private static void CreateBackgroundOverlay(Transform parent)
     {
-        RectTransform bg = CreateRect(parent, "Background", Vector2.zero, Vector2.one,
-            new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
-        Image img = bg.gameObject.AddComponent<Image>();
-        img.raycastTarget = false;
-        if (backgroundSprite != null)
-        {
-            img.sprite = backgroundSprite;
-            img.color = Color.white;
-        }
-        else
-        {
-            img.color = SkyColor;
-        }
-
         RectTransform overlay = CreateRect(parent, "BackgroundOverlay", Vector2.zero, Vector2.one,
             new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
         Image overlayImg = overlay.gameObject.AddComponent<Image>();
