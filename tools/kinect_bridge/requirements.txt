@@ -1,0 +1,10 @@
+# Dépendances du bridge Kinect -> Unity (KiBird).
+# `freenect` n'est PAS listé ici : il est installé au niveau système (voir README.md,
+# le venv DOIT être créé avec --system-site-packages pour y accéder).
+# ⚠️ NE PAS passer à mediapipe 1.0.x : sa nouvelle architecture (libmediapipe.so chargée via
+# ctypes) provoque un SIGKILL du process entier dans ses constructeurs statiques sur cette
+# machine (Arch, Ryzen 7 7840HS). 0.10.35 (architecture pybind11) fonctionne parfaitement,
+# sur Python 3.12 comme 3.14. Voir README.md, section "Blocage mediapipe 1.0.1 (résolu)".
+mediapipe==0.10.35
+numpy>=2.0
+opencv-python-headless>=4.9

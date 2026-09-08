@@ -108,3 +108,11 @@ InitTestScene*.unity*
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
 
+# Bridge Kinect Python (tools/kinect_bridge)
+tools/kinect_bridge/.venv*/
+tools/kinect_bridge/__pycache__/
+tools/kinect_bridge/**/__pycache__/
+tools/kinect_bridge/models/*.task
+tools/kinect_bridge/*.kbr
+
+implementation_plan.md
