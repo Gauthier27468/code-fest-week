@@ -39,8 +39,11 @@ def test_one_euro_smooths_noise():
 # une saturation permanente de `lean` (bug réel constaté sur image réelle).
 
 
-def test_neutral_stance_no_false_positive():
-    """Posture neutre (bras le long du corps) pendant 30 frames : aucune commande ne doit se déclencher."""
+def test_neutral_stance_no_lean_or_throttle_false_positive():
+    """Posture neutre (bras le long du corps) pendant 30 frames : direction et vitesse au repos.
+
+    L'altitude, elle, DOIT réagir (piqué franc) : voir test_arms_down_dive juste après.
+    """
     cfg = GestureConfig()
     state = GestureState(neutral_distance_m=2.0)
     t = 0.0
@@ -53,9 +56,83 @@ def test_neutral_stance_no_false_positive():
             distance_m=2.0,
         )
     assert abs(out.lean) < 0.05, f"posture droite doit donner lean~0, obtenu {out.lean}"
-    assert abs(out.lift) < 0.05
     assert abs(out.throttle) < 0.05
-    assert out.glide < 0.05
+
+
+def test_arms_down_dive():
+    """Bras le long du corps = piqué franc, PAS un plané léger et surtout pas lift=0.
+
+    Verrouille la correction d'un bug réel : `max(lift_impulse, sink)` avec lift_impulse=0.0
+    au repos (jamais négatif) écrasait silencieusement tout le plané/piqué, quelle que soit
+    la posture des bras — l'oiseau ne perdait jamais d'altitude en vol plané.
+    """
+    cfg = GestureConfig()
+    state = GestureState(neutral_distance_m=2.0)
+    t = 0.0
+    out = None
+    for _ in range(30):
+        t += 1 / 30.0
+        out = update_gestures(
+            state, cfg, now=t, dt=1 / 30.0,
+            l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
+            l_wrist=(0.58, 0.6), r_wrist=(0.42, 0.6),  # bras le long du corps
+            distance_m=2.0,
+        )
+    assert out.glide < 0.05, f"bras le long du corps doit donner glide~0, obtenu {out.glide}"
+    assert out.lift < -0.9, f"bras le long du corps doit piquer franc (lift proche de -1), obtenu {out.lift}"
+
+
+def test_partial_arm_raise_gives_intermediate_sink():
+    """Bras à mi-hauteur (ni le long du corps, ni à l'horizontale) : plané ET chute intermédiaires.
+
+    C'est le point central de la continuité demandée : glide et lift ne sont pas des valeurs
+    tout-ou-rien, ils suivent la hauteur réelle des bras entre les deux postures extrêmes.
+    """
+    cfg = GestureConfig()
+
+    def settle(l_wrist_y, r_wrist_y):
+        state = GestureState(neutral_distance_m=2.0)
+        t = 0.0
+        out = None
+        for _ in range(60):  # 2s, largement assez pour que le lissage (3/s) rattrape la cible
+            t += 1 / 30.0
+            out = update_gestures(
+                state, cfg, now=t, dt=1 / 30.0,
+                l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
+                l_wrist=(0.58, l_wrist_y), r_wrist=(0.42, l_wrist_y),
+                distance_m=2.0,
+            )
+        return out
+
+    down = settle(0.6, 0.6)   # bras le long du corps
+    mid = settle(0.45, 0.45)  # à mi-chemin entre épaules (0.3) et bras baissés (0.6)
+    up = settle(0.3, 0.3)     # bras tendus à l'horizontale (hauteur d'épaules)
+
+    assert down.glide < up.glide, "monter les bras doit augmenter glide"
+    assert down.glide < mid.glide < up.glide, f"position intermédiaire doit donner un glide intermédiaire, obtenu {mid.glide}"
+    assert down.lift < mid.lift < up.lift,         f"la chute doit être intermédiaire entre piqué et plané, obtenu down={down.lift} mid={mid.lift} up={up.lift}"
+    assert mid.lift < -0.05, "à mi-hauteur, l'oiseau doit quand même perdre de l'altitude"
+
+
+def test_flap_overrides_dive():
+    """Un battement doit faire monter l'oiseau même bras le long du corps (donc en plein piqué)."""
+    cfg = GestureConfig()
+    state = GestureState(neutral_distance_m=2.0)
+    # Première frame : établit une position de poignet de référence, sans vitesse encore mesurable.
+    update_gestures(
+        state, cfg, now=0.0, dt=1 / 30.0,
+        l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
+        l_wrist=(0.58, 0.6), r_wrist=(0.42, 0.6),
+        distance_m=2.0,
+    )
+    # Battement : les poignets remontent très vite (mouvement vers le haut = y qui décroît).
+    out = update_gestures(
+        state, cfg, now=1 / 30.0, dt=1 / 30.0,
+        l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),
+        l_wrist=(0.58, 0.2), r_wrist=(0.42, 0.2),
+        distance_m=2.0,
+    )
+    assert out.lift > 0.9, f"un battement doit donner une impulsion de montée forte, obtenu {out.lift}"
 
 
 def test_real_world_upright_coordinates_give_no_lean():

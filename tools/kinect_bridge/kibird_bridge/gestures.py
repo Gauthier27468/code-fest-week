@@ -74,8 +74,21 @@ class GestureConfig:
     lean_deadzone_deg: float = 5.0
     lean_max_deg: float = 25.0
     lift_window_s: float = 0.4  # durée de décroissance de l'impulsion de battement
-    glide_shoulder_tolerance: float = 0.15  # tolérance relative (±15%) hauteur poignet/épaule
-    glide_rise_rate: float = 2.0  # 1/s, vitesse de montée de `glide` vers 1.0
+
+    # `glide` (0 = bras le long du corps, 1 = bras tendus à l'horizontale) est une mesure
+    # CONTINUE de la hauteur des poignets par rapport aux épaules, pas un seuil tout-ou-rien :
+    # un joueur qui lève les bras à mi-hauteur obtient un plané partiel, avec un taux de chute
+    # intermédiaire (cf. glide_full_sink / glide_none_dive ci-dessous).
+    glide_arm_range_shoulders: float = 1.4  # écart poignet/épaule (en largeurs d'épaules) pour glide=0
+    glide_rise_rate: float = 3.0  # 1/s, vitesse de suivi de `glide` vers sa cible (anti-jitter)
+
+    # Taux de chute vertical appliqué à `lift` en l'absence de battement, interpolé linéairement
+    # sur `glide` entre ces deux bornes. glide_full_sink doit rester net (un plané qui ne fait
+    # pas du tout descendre l'oiseau ne se sent pas comme un plané) ; glide_none_dive doit être
+    # franc (bras le long du corps = piqué, pas une simple perte d'altitude).
+    glide_full_sink: float = -0.35   # bras à l'horizontale (glide=1) : léger plané
+    glide_none_dive: float = -1.0    # bras le long du corps (glide=0) : piqué vers le sol
+
     throttle_deadzone_m: float = 0.15
     throttle_range_m: float = 1.0  # +-1m autour de la distance neutre = +-1 en sortie
 
@@ -102,11 +115,19 @@ class GestureOutput:
     glide: float
 
 
-def _is_glide_pose(l_wrist_y, r_wrist_y, l_shoulder_y, r_shoulder_y, tolerance: float) -> bool:
-    """Bras tendus à l'horizontale : poignets à hauteur d'épaules (± tolérance relative)."""
-    l_ok = abs(l_wrist_y - l_shoulder_y) <= tolerance
-    r_ok = abs(r_wrist_y - r_shoulder_y) <= tolerance
-    return l_ok and r_ok
+def _arm_raise(l_wrist_y, r_wrist_y, l_shoulder_y, r_shoulder_y, shoulder_width: float,
+               max_range_shoulders: float) -> float:
+    """Hauteur des bras, continue : 0.0 = le long du corps, 1.0 = tendus à l'horizontale.
+
+    Normalisé par la largeur d'épaules à l'image (pas un seuil fixe en coordonnées
+    normalisées) : cette largeur varie avec la distance au capteur exactement comme le
+    reste du squelette, donc le geste reste calibré pareil à 1m ou à 4m de la Kinect.
+    """
+    wrist_mid_y = (l_wrist_y + r_wrist_y) / 2.0
+    shoulder_mid_y = (l_shoulder_y + r_shoulder_y) / 2.0
+    offset = abs(wrist_mid_y - shoulder_mid_y)
+    scale = max(shoulder_width, 1e-6) * max_range_shoulders
+    return _clamp(1.0 - offset / scale, 0.0, 1.0)
 
 
 def update_gestures(
@@ -139,9 +160,10 @@ def update_gestures(
     lean_raw = _clamp(-_deadzone(angle_deg, config.lean_deadzone_deg, config.lean_max_deg))
     lean = _clamp(state.lean_filter(lean_raw, now))
 
-    # --- glide : posture bras tendus maintenue, montée progressive vers 1 ---
-    is_glide = _is_glide_pose(l_wrist[1], r_wrist[1], l_shoulder[1], r_shoulder[1], config.glide_shoulder_tolerance)
-    target = 1.0 if is_glide else 0.0
+    # --- glide : hauteur des bras, continue, lissée pour absorber le bruit de pose ---
+    shoulder_width = abs(l_shoulder[0] - r_shoulder[0])
+    target = _arm_raise(l_wrist[1], r_wrist[1], l_shoulder[1], r_shoulder[1],
+                         shoulder_width, config.glide_arm_range_shoulders)
     step = config.glide_rise_rate * dt
     if state.glide_value < target:
         state.glide_value = min(target, state.glide_value + step)
@@ -171,9 +193,16 @@ def update_gestures(
     state._prev_wrist_y = (l_wrist[1], r_wrist[1])
     state._prev_t = now
 
-    # `glide` (plané, descente très lente) tire lift vers une légère valeur négative/nulle ;
-    # un battement prioritaire écrase temporairement le plané.
-    lift = _clamp(max(state.lift_impulse, -state.glide_value * 0.1))
+    # Chute liée à la posture des bras, continue entre les deux bornes de config ci-dessus :
+    # bras à l'horizontale (glide=1) -> plané net ; bras le long du corps (glide=0) -> piqué.
+    # ⚠️ Ne PAS combiner avec `max(lift_impulse, sink)` : lift_impulse vaut 0.0 au repos (pas
+    # négatif) et `max(0.0, sink)` renvoie alors 0.0 puisque sink est toujours négatif — ça
+    # annulait silencieusement tout le plané/piqué en dehors d'un battement (bug réel constaté :
+    # l'oiseau ne perdait jamais d'altitude en vol plané). Un battement prioritaire écrase donc
+    # explicitement la chute le temps de son impulsion, au lieu de rivaliser avec elle via max().
+    sink = config.glide_none_dive + (config.glide_full_sink - config.glide_none_dive) * state.glide_value
+    lift = state.lift_impulse if state.lift_impulse > 1e-3 else sink
+    lift = _clamp(lift)
 
     # --- throttle : distance relative à la distance neutre calibrée ---
     if state.neutral_distance_m is None:
