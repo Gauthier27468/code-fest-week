@@ -103,11 +103,16 @@ class GestureConfig:
     glide_falloff_power: float = 2.2
 
     # Taux de chute vertical appliqué à `lift` en l'absence de battement, interpolé linéairement
-    # sur `glide` entre ces deux bornes. glide_full_sink doit rester net (un plané qui ne fait
-    # pas du tout descendre l'oiseau ne se sent pas comme un plané) ; glide_none_dive doit être
-    # franc (bras le long du corps = piqué, pas une simple perte d'altitude).
-    glide_full_sink: float = -0.35   # bras à l'horizontale (glide=1) : léger plané
-    glide_none_dive: float = -1.0    # bras le long du corps (glide=0) : piqué vers le sol
+    # sur `glide` entre ces deux bornes.
+    # glide_full_sink : plané à fond (bras à l'horizontale) -> quasi horizontal, l'oiseau ne
+    # doit descendre que très légèrement (retour JPO : "presque rester droit verticalement mais
+    # descendre un tout petit peu"). Proche de 0 mais pas nul : un plané qui ne fait *jamais*
+    # perdre d'altitude ne se sent plus comme un plané.
+    # glide_none_dive : bras le long du corps -> piqué, doit se sentir clairement descendre mais
+    # sans être un décrochage brutal (retour JPO : moins violent que -1.0, qui saturait
+    # immédiatement `lift` au clamp bas dès que les bras étaient baissés).
+    glide_full_sink: float = -0.08   # bras à l'horizontale (glide=1) : plané quasi plat
+    glide_none_dive: float = -0.55   # bras le long du corps (glide=0) : piqué net mais pas un crash
 
     throttle_deadzone_m: float = 0.15
     throttle_range_m: float = 1.0  # +-1m autour de la distance neutre = +-1 en sortie

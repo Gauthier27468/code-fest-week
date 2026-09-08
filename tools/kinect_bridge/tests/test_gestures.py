@@ -79,7 +79,7 @@ def test_arms_down_dive():
             distance_m=2.0,
         )
     assert out.glide < 0.05, f"bras le long du corps doit donner glide~0, obtenu {out.glide}"
-    assert out.lift < -0.9, f"bras le long du corps doit piquer franc (lift proche de -1), obtenu {out.lift}"
+    assert out.lift < -0.4, f"bras le long du corps doit piquer nettement, obtenu {out.lift}"
 
 
 def test_partial_arm_raise_gives_intermediate_sink():
@@ -193,7 +193,7 @@ def test_single_frame_velocity_spike_does_not_trigger_flap():
         l_wrist=(0.58, 0.55), r_wrist=(0.42, 0.55),  # vy ≈ 1.5, largement au-dessus du seuil
         distance_m=2.0,
     )
-    assert out.lift < -0.9, f"un sursaut d'une frame ne doit pas déclencher de battement, obtenu {out.lift}"
+    assert out.lift < -0.4, f"un sursaut d'une frame ne doit pas déclencher de battement, obtenu {out.lift}"
     assert state._flap_streak == 1, "le sursaut doit être compté, juste pas encore déclenché"
 
 
