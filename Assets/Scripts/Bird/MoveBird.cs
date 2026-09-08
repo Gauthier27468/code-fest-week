@@ -19,6 +19,14 @@ public class MoveBird : MonoBehaviour
     public float pitchAngle = 15f;
     public float rotationSpeed = 5f;
 
+    [Header("Kinect")]
+    [Tooltip("Laisser vide : l'écouteur Kinect est trouvé tout seul au démarrage. " +
+             "Sans joueur détecté (bridge coupé, personne dans la zone), le clavier reprend la main.")]
+    public KinectInputSource kinectSource;
+
+    [Tooltip("Décocher pour forcer le clavier, même si la Kinect envoie des données.")]
+    public bool useKinectWhenAvailable = true;
+
     [Header("Animation")]
     public Animator animator;
     [Range(0.1f, 10f)] public float animationSpeed = 2.5f;
@@ -27,6 +35,25 @@ public class MoveBird : MonoBehaviour
     private Quaternion initialRotation;
     private float currentRoll = 0f;
     private float currentPitch = 0f;
+
+    /// <summary>
+    /// Écouteur à interroger : celui câblé dans l'inspecteur s'il y en a un, sinon celui créé
+    /// automatiquement par KinectInputSource. Résolu à chaque accès plutôt que mis en cache dans
+    /// Awake() : le bootstrap tourne après les Awake de la scène, il serait encore null.
+    /// </summary>
+    private KinectInputSource ActiveKinectSource =>
+        kinectSource != null ? kinectSource : KinectInputSource.Instance;
+
+    /// <summary>La Kinect pilote l'oiseau en ce moment (utilisé aussi pour l'UI/debug).</summary>
+    public bool IsKinectDriving
+    {
+        get
+        {
+            if (!useKinectWhenAvailable) return false;
+            var source = ActiveKinectSource;
+            return source != null && source.HasPlayer;
+        }
+    }
 
     private void Awake()
     {
@@ -58,6 +85,11 @@ public class MoveBird : MonoBehaviour
 
     private Vector3 GetInput()
     {
+        // Kinect prioritaire tant qu'un joueur est verrouillé et que les paquets sont frais ;
+        // dès que ce n'est plus le cas, on retombe sans transition sur le clavier ci-dessous
+        // (indispensable pour les tests et pour les animateurs pendant la JPO).
+        if (IsKinectDriving) return ActiveKinectSource.Input;
+
         float x = 0f;
         float y = 0f;
         float z = 0f;

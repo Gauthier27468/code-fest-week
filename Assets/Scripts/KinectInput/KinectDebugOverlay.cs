@@ -1,4 +1,7 @@
 using UnityEngine;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 /// <summary>
 /// Overlay de vérification du flux Kinect : état du bridge, distance, latence, barres des
@@ -11,7 +14,11 @@ using UnityEngine;
 public class KinectDebugOverlay : MonoBehaviour
 {
     [Tooltip("Raccourci pour afficher/masquer l'overlay pendant une partie.")]
+#if ENABLE_INPUT_SYSTEM
+    public Key toggleKey = Key.F1;
+#else
     public KeyCode toggleKey = KeyCode.F1;
+#endif
 
     public bool visible = true;
 
@@ -47,7 +54,21 @@ public class KinectDebugOverlay : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(toggleKey)) visible = !visible;
+        if (WasTogglePressed()) visible = !visible;
+    }
+
+    /// <summary>
+    /// Le projet est réglé sur "Input System Package (New)" seul : la classe historique
+    /// UnityEngine.Input y lève une exception à chaque appel. On passe donc par Keyboard.current.
+    /// </summary>
+    private bool WasTogglePressed()
+    {
+#if ENABLE_INPUT_SYSTEM
+        var keyboard = Keyboard.current;
+        return keyboard != null && keyboard[toggleKey].wasPressedThisFrame;
+#else
+        return Input.GetKeyDown(toggleKey);
+#endif
     }
 
     private void OnGUI()
@@ -79,9 +100,18 @@ public class KinectDebugOverlay : MonoBehaviour
         GUILayout.Label($"Distance : <b>{_source.Distance:F2} m</b>", _label);
 
         // La latence bout-en-bout est un critère de réussite du projet (< 150 ms).
-        string latColor = _source.LatencyMs < 150f ? "#55ff55" : "#ff5555";
-        GUILayout.Label($"Latence : <color={latColor}><b>{_source.LatencyMs:F0} ms</b></color>   " +
-                        $"seq {_source.Sequence}", _label);
+        // En relecture d'une session .kbr, les paquets portent l'horodatage d'origine : la
+        // "latence" calculée serait l'âge de l'enregistrement, pas une mesure — on l'annule.
+        if (_source.LatencyMs > 10000f)
+        {
+            GUILayout.Label($"Latence : <i>n/a (session rejouée)</i>   seq {_source.Sequence}", _label);
+        }
+        else
+        {
+            string latColor = _source.LatencyMs < 150f ? "#55ff55" : "#ff5555";
+            GUILayout.Label($"Latence : <color={latColor}><b>{_source.LatencyMs:F0} ms</b></color>   " +
+                            $"seq {_source.Sequence}", _label);
+        }
 
         GUILayout.Space(6);
         Vector3 input = _source.Input;

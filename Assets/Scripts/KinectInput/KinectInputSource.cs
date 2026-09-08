@@ -10,18 +10,27 @@ using UnityEngine;
 /// sous la même forme qu'un input clavier : un Vector3 (x = gauche/droite, y = altitude,
 /// z = vitesse), directement consommable par MoveBird.
 ///
-/// Intégration (4 lignes dans MoveBird.cs) :
-///     public KinectInputSource kinectSource;      // laisser vide = clavier
-///     private Vector3 GetInput() {
-///         if (kinectSource != null && kinectSource.HasPlayer) return kinectSource.Input;
-///         ... code clavier existant inchangé ...
-///     }
+/// Aucune scène à modifier : si personne n'a posé le composant à la main, il est créé
+/// automatiquement au lancement (voir AutoCreate) et exposé via <see cref="Instance"/>.
+/// MoveBird le consulte par ce biais.
 ///
-/// Le clavier reste donc toujours fonctionnel : bridge coupé ou aucun joueur détecté,
+/// Le clavier reste toujours fonctionnel : bridge coupé ou aucun joueur détecté,
 /// HasPlayer est false et le jeu retombe seul sur les touches.
 /// </summary>
 public class KinectInputSource : MonoBehaviour
 {
+    /// <summary>
+    /// Écouteur actif du jeu. Renseigné par le composant posé dans la scène s'il y en a un,
+    /// sinon par le bootstrap automatique. Null tant qu'aucune scène n'a fini de charger.
+    /// </summary>
+    public static KinectInputSource Instance { get; private set; }
+
+    /// <summary>
+    /// Mettre à false (depuis un RuntimeInitializeOnLoadMethod BeforeSceneLoad) pour empêcher
+    /// la création automatique et gérer l'écouteur soi-même.
+    /// </summary>
+    public static bool AutoBootstrap = true;
+
     [Header("Réseau")]
     [Tooltip("Doit correspondre au --port du bridge Python (défaut 7777).")]
     public int port = 7777;
@@ -114,6 +123,43 @@ public class KinectInputSource : MonoBehaviour
 
     /// <summary>Articulations brutes, pour l'overlay de debug. Ne pas modifier le contenu.</summary>
     public Joint[] Joints => _currentJoints;
+
+    /// <summary>
+    /// Crée l'écouteur si la scène chargée n'en contient pas. Volontairement AfterSceneLoad :
+    /// un composant posé à la main dans la scène (avec ses réglages) doit gagner sur celui-ci.
+    /// Ne tourne qu'une fois par lancement, et l'objet survit aux rechargements de scène —
+    /// le port UDP n'est donc pas relié à chaque redémarrage de partie.
+    /// </summary>
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void AutoCreate()
+    {
+        if (!AutoBootstrap || Instance != null) return;
+
+        var go = new GameObject("KinectInput (auto)");
+        go.AddComponent<KinectInputSource>();
+        // Overlay masqué par défaut (on est en configuration JPO), F1 pour l'afficher.
+        go.AddComponent<KinectDebugOverlay>().visible = false;
+        DontDestroyOnLoad(go);
+    }
+
+    private void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
+            // Deux écouteurs relieraient le même port : le second volerait une partie des
+            // paquets au premier, ce qui se traduirait par des saccades difficiles à diagnostiquer.
+            Debug.LogWarning($"[KinectInput] Un KinectInputSource existe déjà : '{name}' est " +
+                             "désactivé pour ne pas ouvrir le port UDP deux fois.");
+            enabled = false;
+            return;
+        }
+        Instance = this;
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+    }
 
     private void OnEnable()
     {

@@ -7,6 +7,7 @@ pose → verrouillage joueur → traduction en gestes de vol → émission UDP b
 
 ```bash
 ./run_bridge.sh                          # mode live (Kinect branchée)
+./run_bridge.sh --demo                   # joueur simulé (aucun matériel, aucun fichier requis)
 ./run_bridge.sh --replay session.kbr     # rejoue une session enregistrée (aucun matériel requis)
 python -m kibird_bridge.monitor          # observe les paquets reçus, dans un autre terminal
 ```
@@ -88,19 +89,40 @@ Points à surveiller en particulier : la distance affichée doit correspondre au
 (1-4 m), et le sens gauche/droite doit être naturel — si l'oiseau part du mauvais côté,
 relancer avec `--mirror`.
 
+## Intégration Unity
+
+Rien à câbler dans la scène. `KinectInputSource` se crée tout seul au lancement
+(`RuntimeInitializeOnLoadMethod`, avec `KinectDebugOverlay` masqué) et `MoveBird` l'interroge
+via `KinectInputSource.Instance` :
+
+- un joueur est verrouillé et les paquets sont frais → la Kinect pilote l'oiseau ;
+- sinon (bridge éteint, personne dans la zone, perte de suivi) → le clavier reprend la main,
+  sans transition ni message d'erreur.
+
+Le mapping est direct, aucune logique de geste côté Unity :
+`lean → x` (gauche/droite), `lift → y` (altitude), `throttle → z` (vitesse, ±40 % de
+`forwardSpeed` tant que `autoMoveForward` est coché).
+
+Pour poser l'écouteur à la main quand même (afin d'en régler le port ou les timeouts dans
+l'inspecteur), ajouter un GameObject avec `KinectInputSource` : celui de la scène gagne, le
+bootstrap automatique ne crée alors rien. Décocher `useKinectWhenAvailable` sur `MoveBird`
+force le clavier.
+
+**F1** affiche/masque l'overlay de debug (état du bridge, distance, latence, jauges, squelette).
+
 ## Tester sans Kinect ni mediapipe (dès maintenant)
 
 ```bash
-# Terminal 1 : observer les paquets
-python -m kibird_bridge.monitor
+# Terminal 1 : joueur simulé à 30 Hz (virages, battements, variation de vitesse)
+python -m kibird_bridge.bridge --demo
 
-# Terminal 2 : rejouer une session (ou une session factice pour un premier test)
-python -m kibird_bridge.bridge --replay <fichier>.kbr
+# Terminal 2 : observer les paquets reçus (ou lancer le Play dans Unity)
+python -m kibird_bridge.monitor
 ```
 
-C'est le mode à utiliser pour intégrer `KinectInputSource.cs` côté Unity : le format des
-paquets reçus est identique à celui du mode live, seul le champ `replay_mode` (flag bit 2)
-change.
+`--replay <fichier>.kbr` rejoue à la place une vraie session enregistrée. Dans les deux cas,
+le format des paquets est identique à celui du mode live ; seul le champ `replay_mode`
+(flag bit 2) change. C'est le mode à utiliser pour travailler l'intégration Unity.
 
 ## Format réseau
 

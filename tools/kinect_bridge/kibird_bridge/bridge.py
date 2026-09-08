@@ -79,6 +79,114 @@ def _build_packet(
     )
 
 
+def _grab_first_frame(capture, timeout_s: float = 8.0):
+    """Capture la première frame avec un chien de garde, avant d'annoncer qu'on émet.
+
+    `freenect.sync_get_video()` peut se bloquer indéfiniment quand le device USB est dans un
+    état bancal (constaté : process vivant, 0 paquet émis, aucun message). Sans ce garde-fou
+    le bridge affiche "Émission UDP..." et ne fait plus rien — le pire mode de panne possible
+    un jour de JPO, puisque tout a l'air normal côté console.
+    """
+    import threading
+
+    from .capture import KinectUnavailableError
+
+    result: dict = {}
+
+    def worker():
+        try:
+            result["frame"] = capture.read()
+        except BaseException as exc:  # noqa: BLE001 - remonté tel quel au thread principal
+            result["error"] = exc
+
+    # daemon : si sync_get_video() ne rend jamais la main, le thread reste bloqué mais le
+    # process peut quand même sortir proprement pour laisser l'animateur relancer.
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    t.join(timeout_s)
+
+    if t.is_alive():
+        raise KinectUnavailableError(
+            f"La Kinect ne renvoie aucune image (bloquée depuis {timeout_s:.0f}s).\n"
+            "  La caméra est détectée mais le flux ne démarre pas — typiquement un device USB\n"
+            "  resté dans un état bancal après un arrêt brutal.\n"
+            "  -> Débranche puis rebranche le câble USB de la Kinect, et relance."
+        )
+    if "error" in result:
+        raise result["error"]
+    return result["frame"]
+
+
+def run_demo(args: argparse.Namespace) -> None:
+    """Émet un joueur simulé à 30 Hz, sans Kinect, sans mediapipe et sans fichier de session.
+
+    Sert à valider la liaison bridge -> Unity (port, parsing, mapping des commandes sur
+    MoveBird) quand la Kinect n'est pas disponible : c'est la seule différence avec le mode
+    live, les paquets émis sont strictement au même format.
+    """
+    import math
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    print(f"[DEMO] joueur simulé -> {args.host}:{args.port} @ {TARGET_HZ:.0f}Hz. Ctrl+C pour arrêter.")
+
+    seq = 0
+    t0 = time.time()
+    frame_period = 1.0 / TARGET_HZ
+    try:
+        while True:
+            loop_start = time.time()
+            t = loop_start - t0
+
+            # Cycle lisible à l'œil : virage lent d'un bord à l'autre, battements réguliers,
+            # et une oscillation de vitesse plus lente pour voir bouger les trois axes.
+            lean = math.sin(t * 0.5)
+            lift = max(0.0, math.sin(t * 2.0))
+            throttle = 0.6 * math.sin(t * 0.25)
+            glide = 1.0 if abs(lift) < 0.05 else 0.0
+            distance = 2.5 - throttle
+
+            # Squelette factice cohérent avec les commandes, pour que l'overlay de debug
+            # affiche autre chose qu'un bonhomme figé.
+            roll = lean * 0.08
+            wrist_y = 0.40 - lift * 0.25
+            joints = [
+                protocol.Joint(0.50, 0.20, distance, 0.95),                      # NOSE
+                protocol.Joint(0.58, 0.35 + roll, distance, 0.95),               # L_SHOULDER
+                protocol.Joint(0.42, 0.35 - roll, distance, 0.95),               # R_SHOULDER
+                protocol.Joint(0.68, 0.38 + roll, distance, 0.90),               # L_ELBOW
+                protocol.Joint(0.32, 0.38 - roll, distance, 0.90),               # R_ELBOW
+                protocol.Joint(0.78, wrist_y + roll, distance, 0.85),            # L_WRIST
+                protocol.Joint(0.22, wrist_y - roll, distance, 0.85),            # R_WRIST
+                protocol.Joint(0.56, 0.65, distance, 0.90),                      # L_HIP
+                protocol.Joint(0.44, 0.65, distance, 0.90),                      # R_HIP
+            ]
+
+            packet = protocol.SkeletonPacket(
+                seq=seq,
+                timestamp=loop_start,
+                player_present=True,
+                in_zone=True,
+                replay_mode=True,
+                distance=distance,
+                lean=lean,
+                lift=lift,
+                throttle=throttle,
+                glide=glide,
+                confidence=0.9,
+                joints=tuple(joints),
+            )
+            sock.sendto(protocol.pack(packet), (args.host, args.port))
+            seq += 1
+
+            remaining = frame_period - (time.time() - loop_start)
+            if remaining > 0:
+                time.sleep(remaining)
+    except KeyboardInterrupt:
+        print("\nArrêt.")
+    finally:
+        sock.close()
+
+
 def run_replay(args: argparse.Namespace) -> None:
     """Rejoue une session enregistrée : ne touche ni à la Kinect ni à mediapipe.
 
@@ -119,11 +227,20 @@ def run_live(args: argparse.Namespace) -> None:
     frame_period = 1.0 / TARGET_HZ
     last_t = time.time()
 
+    # Le premier appel valide réellement le flux : tant qu'il n'a pas rendu la main, on n'a
+    # aucune preuve que la Kinect produit des images.
+    print("Attente de la première image ...", flush=True)
+    first_frame = _grab_first_frame(capture)
+    print("Flux vidéo OK.")
+
     print(f"Émission UDP vers {args.host}:{args.port} @ ~{TARGET_HZ:.0f}Hz. Ctrl+C pour arrêter.")
+    frames_since_status = 0
+    last_status_t = time.time()
     try:
         while True:
             loop_start = time.time()
-            frame = capture.read()
+            frame = first_frame if first_frame is not None else capture.read()
+            first_frame = None
             now = time.time()
             dt = max(now - last_t, 1e-3)
             last_t = now
@@ -176,6 +293,20 @@ def run_live(args: argparse.Namespace) -> None:
                 recorder.write(raw, now=now)
             seq += 1
 
+            # Ligne de statut régulière : sans elle, un blocage de la capture est indiscernable
+            # d'un fonctionnement normal (la console reste muette dans les deux cas).
+            frames_since_status += 1
+            if now - last_status_t >= 2.0:
+                hz = frames_since_status / (now - last_status_t)
+                if tracking_result.player_present:
+                    calib = "calibré" if gesture_state.neutral_distance_m is not None else "NON calibré (bras tendus 3s)"
+                    etat = f"JOUEUR  dist={distance:.2f}m  {calib}"
+                else:
+                    etat = "aucun joueur dans la zone"
+                print(f"\r[{hz:4.1f} Hz] {etat}".ljust(78), end="", flush=True)
+                frames_since_status = 0
+                last_status_t = now
+
             elapsed = time.time() - loop_start
             remaining = frame_period - elapsed
             if remaining > 0:
@@ -207,7 +338,13 @@ def main() -> None:
     parser.add_argument("--record", metavar="FICHIER.kbr", help="Enregistre la session en parallèle de l'émission live")
     parser.add_argument("--replay", metavar="FICHIER.kbr", help="Rejoue une session enregistrée au lieu d'utiliser la Kinect")
     parser.add_argument("--no-loop", action="store_true", help="Avec --replay : ne pas boucler à la fin du fichier")
+    parser.add_argument("--demo", action="store_true",
+                        help="Joueur simulé, sans Kinect ni fichier : pour vérifier la liaison avec Unity")
     args = parser.parse_args()
+
+    if args.demo:
+        run_demo(args)
+        return
 
     if args.replay:
         run_replay(args)
