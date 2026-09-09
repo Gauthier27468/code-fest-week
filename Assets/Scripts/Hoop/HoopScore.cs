@@ -37,21 +37,7 @@ public class HoopScore : MonoBehaviour
         }
 
         triggerCollider = GetComponent<Collider>();
-        if (triggerCollider is BoxCollider box)
-        {
-            box.isTrigger = true;
-            // Sécurité anti-tunneling à haute vitesse : si la boîte est trop fine (< 0.5m), on épaissit la zone de détection
-            if (box.size.y < 0.5f)
-            {
-                Vector3 s = box.size;
-                s.y = 0.8f;
-                box.size = s;
-            }
-        }
-        else if (triggerCollider != null)
-        {
-            triggerCollider.isTrigger = true;
-        }
+        triggerCollider.isTrigger = true;
     }
 
     public void OnTriggerEnter(Collider other)
@@ -107,8 +93,8 @@ public class HoopScore : MonoBehaviour
         ParticleSystem ps = fxObj.AddComponent<ParticleSystem>();
         ParticleSystemRenderer psr = fxObj.GetComponent<ParticleSystemRenderer>();
 
-        Shader pShader = Shader.Find("Universal Render Pipeline/Particles/Unlit") 
-                      ?? Shader.Find("Particles/Standard Unlit") 
+        Shader pShader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
+                      ?? Shader.Find("Particles/Standard Unlit")
                       ?? Shader.Find("Sprites/Default");
         if (pShader != null)
         {
