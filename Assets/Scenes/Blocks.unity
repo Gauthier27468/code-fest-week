@@ -827,14 +827,14 @@ MonoBehaviour:
   kinectInputProvider: {fileID: 434528320}
   playerSilhouette: {fileID: 946749845}
   lastScoreText: {fileID: 1665159458}
-  bestScoreText: {fileID: 109561273}
-  scoreTitleText: {fileID: 1220972210}
+  bestScoreText: {fileID: 0}
+  scoreTitleText: {fileID: 0}
   leaderboardText: {fileID: 0}
   promptText: {fileID: 1767399077}
   startProgressFill: {fileID: 1801100281}
   holdDurationToStart: 3
   menuVisualRoot: {fileID: 1392071819}
-  menuGameRoot: {fileID: 1650253322}
+  menuGameRoot: {fileID: 0}
 --- !u!114 &434528320
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -893,11 +893,15 @@ MonoBehaviour:
   allowInstantRestartKeys: 0
   customFont: {fileID: 0}
   rootPanel: {fileID: 320345498}
+  titleText: {fileID: 0}
   scoreText: {fileID: 1599640889}
   survivalTimeText: {fileID: 895650058}
   countdownText: {fileID: 1608214040}
   backgroundOverlay: {fileID: 848533632}
+  cardBg: {fileID: 0}
   gameOverSound: {fileID: 320345502}
+  defeatSound: {fileID: 0}
+  victorySound: {fileID: 0}
 --- !u!4 &523202153
 Transform:
   m_ObjectHideFlags: 0
@@ -3256,6 +3260,10 @@ PrefabInstance:
     - target: {fileID: 3135594759709096318, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5639783668897378715, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+      propertyPath: mainMusic
+      value: 
       objectReference: {fileID: 0}
     - target: {fileID: 5639783668897378715, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: scoreText
