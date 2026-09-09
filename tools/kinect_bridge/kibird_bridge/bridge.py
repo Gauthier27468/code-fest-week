@@ -141,11 +141,19 @@ def _grab_first_frame(capture, timeout_s: float = 8.0):
 def run_live(args: argparse.Namespace) -> None:
     from .capture import KinectCapture, KinectUnavailableError
     from .pose import PoseEstimator
+    from .segmentation import remove_background
 
     print(f"Chargement du modele {args.model} ...")
     pose_estimator = PoseEstimator(args.model, num_poses=args.num_poses)
     capture = KinectCapture()
+    # La depth de capture.py est toujours DEPTH_REGISTERED, donc alignee sur la RGB :
+    # le masque peut etre applique tel quel (cf. segmentation.py).
+    bg_filter_enabled = args.bg_filter
     print("Kinect initialisee.")
+    if bg_filter_enabled:
+        print(f"Filtre de fond IR actif : tout ce qui est au-dela de {args.bg_max_distance:.1f}m est masque.")
+    else:
+        print("Filtre de fond IR desactive.")
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
@@ -193,7 +201,14 @@ def run_live(args: argparse.Namespace) -> None:
             dt = max(now - last_t, 1e-3)
             last_t = now
 
-            skeletons = pose_estimator.detect(frame.rgb)
+            # Fond supprime AVANT MediaPipe : les personnes au-dela de la zone de jeu ne
+            # generent plus de squelette du tout, au lieu d'etre filtrees apres coup.
+            rgb_for_pose = (
+                remove_background(frame.rgb, frame.depth_mm, max_depth_m=args.bg_max_distance)
+                if bg_filter_enabled
+                else frame.rgb
+            )
+            skeletons = pose_estimator.detect(rgb_for_pose)
             candidate, distance, hip_x, hip_y = _select_front_skeleton(
                 skeletons, capture, frame.depth_mm, frame.rgb.shape[1], frame.rgb.shape[0],
             )
@@ -263,6 +278,11 @@ def main() -> None:
     parser.add_argument("--mirror", action=argparse.BooleanOptionalAction, default=False,
                         help="Inverse gauche/droite. Le mapping par defaut est deja naturel : "
                              "n'active ce flag que si le ressenti est inverse a l'installation.")
+    parser.add_argument("--bg-filter", action=argparse.BooleanOptionalAction, default=True,
+                        help="Masque le fond au-dela de --bg-max-distance avec la profondeur IR "
+                             "avant d'envoyer l'image a MediaPipe")
+    parser.add_argument("--bg-max-distance", type=float, default=4.0,
+                        help="Distance (m) au-dela de laquelle les pixels sont noircis")
     parser.add_argument("--min-distance", type=float, default=1.0)
     parser.add_argument("--max-distance", type=float, default=4.0)
     args = parser.parse_args()

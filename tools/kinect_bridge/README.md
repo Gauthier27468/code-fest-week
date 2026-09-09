@@ -89,9 +89,10 @@ kibird_bridge/
   capture.py    # Kinect (freenect) : RGB + profondeur alignée
   tracking.py   # zone 1-4m, verrouillage joueur, délai de grâce 2.5s — 6 tests
   gestures.py   # lean/lift/glide/throttle + filtre One Euro — 13 tests
+  segmentation.py # suppression du fond au-delà de 4 m via la profondeur IR — 6 tests
   pose.py       # wrapper MediaPipe PoseLandmarker
   bridge.py     # orchestration CLI
-tests/          # 28 tests : for t in tests/test_*.py; do uv run python $t; done
+tests/          # 34 tests : for t in tests/test_*.py; do uv run python $t; done
   fixtures/     # image de test réelle utilisée par le test d'intégration
 models/         # modèle .task téléchargé par run_bridge.sh (non versionné, cf. .gitignore)
 bridge_entry.py     # point d'entrée du binaire gelé (PyInstaller veut un script, pas un module)
@@ -99,6 +100,21 @@ kibird_bridge.spec  # recette PyInstaller (mediapipe, freenect, modèle .task)
 build_bridge.sh     # gèle le bridge et le copie où on lui demande (appelé par Unity au build)
 dist/, build/       # artefacts PyInstaller, non versionnés
 ```
+
+### Filtre de fond (profondeur IR)
+
+Avant d'envoyer l'image à MediaPipe, tous les pixels situés au-delà de **4 m** (limite de la
+zone de jeu) sont noircis à partir de la profondeur IR alignée sur la RGB. Les visiteurs qui
+passent derrière le joueur ne produisent donc plus de squelette du tout. Coût mesuré :
+~4 ms/frame (budget 33 ms à 30 Hz).
+
+```bash
+./run_bridge.sh --bg-max-distance 3.5   # resserrer la coupure
+./run_bridge.sh --no-bg-filter          # désactiver (debug)
+```
+
+Garde-fous : les trous IR sur le joueur sont bouchés (fermeture morphologique) et une depth
+inexploitable laisse l'image intacte plutôt que de la noircir entièrement.
 
 ### Validation matériel
 
