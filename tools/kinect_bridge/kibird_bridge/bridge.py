@@ -15,9 +15,29 @@ from .gestures import GestureConfig, GestureState, update_gestures
 from .recorder import SessionRecorder, replay_realtime
 from .tracking import PlayerTracker, TrackingConfig
 
-DEFAULT_MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "pose_landmarker_lite.task"
+def _default_model_path() -> Path:
+    """Chemin du modèle .task, que l'on tourne depuis les sources ou depuis le binaire gelé.
+
+    PyInstaller embarque le modèle comme donnée et l'extrait dans un dossier temporaire dont il
+    publie le chemin via `sys._MEIPASS` ; hors bundle, l'attribut n'existe pas et le modèle vit
+    dans `models/` à côté du paquet.
+    """
+    bundle_dir = getattr(sys, "_MEIPASS", None)
+    if bundle_dir is not None:
+        return Path(bundle_dir) / "models" / "pose_landmarker_lite.task"
+    return Path(__file__).resolve().parent.parent / "models" / "pose_landmarker_lite.task"
+
+
+DEFAULT_MODEL_PATH = _default_model_path()
 CALIBRATION_HOLD_S = 3.0  # maintien de la posture glide pour valider le démarrage (AGENTS.md)
 TARGET_HZ = 30.0
+
+# Constaté en pratique : juste après l'ouverture du device USB, sync_get_video()/sync_get_depth()
+# renvoient parfois None sur le tout premier appel (device encore dans un état transitoire), alors
+# que refermer et rouvrir l'accès quelques instants plus tard fonctionne du premier coup. D'où ce
+# nombre de tentatives avant d'abandonner et de remonter KinectUnavailableError.
+KINECT_INIT_MAX_ATTEMPTS = 4
+KINECT_INIT_RETRY_DELAY_S = 1.5
 
 
 def _hip_mid_pixel(skeleton: dict, width: int, height: int) -> tuple[int, int, float, float]:
@@ -249,7 +269,7 @@ def run_replay(args: argparse.Namespace) -> None:
 def run_live(args: argparse.Namespace) -> None:
     # Imports différés : la Kinect et mediapipe ne sont nécessaires qu'en mode live,
     # jamais en mode --replay (cf. run_replay ci-dessus).
-    from .capture import KinectCapture
+    from .capture import KinectCapture, KinectUnavailableError
     from .pose import PoseEstimator
 
     print(f"Chargement du modèle {args.model} ...")
@@ -272,7 +292,26 @@ def run_live(args: argparse.Namespace) -> None:
     # Le premier appel valide réellement le flux : tant qu'il n'a pas rendu la main, on n'a
     # aucune preuve que la Kinect produit des images.
     print("Attente de la première image ...", flush=True)
-    first_frame = _grab_first_frame(capture)
+    first_frame = None
+    init_error: KinectUnavailableError | None = None
+    for attempt in range(1, KINECT_INIT_MAX_ATTEMPTS + 1):
+        try:
+            first_frame = _grab_first_frame(capture)
+            init_error = None
+            break
+        except KinectUnavailableError as exc:
+            init_error = exc
+            if attempt < KINECT_INIT_MAX_ATTEMPTS:
+                print(
+                    f"\n[Kinect] tentative {attempt}/{KINECT_INIT_MAX_ATTEMPTS} sans image, "
+                    f"nouvel essai dans {KINECT_INIT_RETRY_DELAY_S:.1f}s...",
+                    file=sys.stderr,
+                )
+                capture.close()
+                time.sleep(KINECT_INIT_RETRY_DELAY_S)
+                capture = KinectCapture(use_registered_depth=not args.no_depth)
+    if init_error is not None:
+        raise init_error
     print("Flux vidéo OK.")
 
     print(f"Émission UDP vers {args.host}:{args.port} @ ~{TARGET_HZ:.0f}Hz. Ctrl+C pour arrêter.")

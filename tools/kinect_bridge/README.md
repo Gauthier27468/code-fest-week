@@ -12,8 +12,33 @@ pose → verrouillage joueur → traduction en gestes de vol → émission UDP b
 python -m kibird_bridge.monitor          # observe les paquets reçus, dans un autre terminal
 ```
 
-`run_bridge.sh` crée le venv (`uv venv --system-site-packages`), installe les dépendances et
-télécharge le modèle MediaPipe au premier lancement.
+`run_bridge.sh` fait un `uv sync` (venv + dépendances depuis `pyproject.toml`) et télécharge le
+modèle MediaPipe au premier lancement. Pour préparer l'environnement sans lancer le bridge :
+
+```bash
+uv sync
+```
+
+### Dépendances système requises
+
+`uv sync` suffit pour le Python, mais **la bibliothèque C `libfreenect` doit être installée sur
+la machine**, avec ses headers de développement :
+
+```bash
+sudo pacman -S libfreenect        # Arch — fournit /usr/lib/libfreenect.so.0 ET /usr/include/libfreenect/
+```
+
+Le paquet PyPI `freenect` (déclaré dans `pyproject.toml`) n'est qu'un binding Cython : il se
+compile au `uv sync` contre ces headers, puis se lie à `/usr/lib/libfreenect.so.0` à l'exécution.
+Il **ne dispense donc pas** d'installer libfreenect — il évite seulement de dépendre du binding
+Python fourni par le paquet système, ce qui permet au venv d'être autonome (plus de
+`--system-site-packages`) et laisse uv choisir librement l'interpréteur.
+
+**Device USB parfois bancal à l'ouverture** : juste après l'ouverture du device, `freenect`
+renvoie parfois `None` sur la toute première image (ce qui donnait l'impression qu'il fallait
+relancer le script 2-3 fois à la main pour que ça marche). Le bridge referme et rouvre
+maintenant l'accès Kinect automatiquement jusqu'à 4 fois (1,5 s entre chaque essai) avant
+d'abandonner — un seul lancement suffit dans l'immense majorité des cas.
 
 ## ✅ Blocage mediapipe 1.0.1 (résolu)
 
@@ -28,8 +53,7 @@ avant tout appel d'API. `strace` confirme un `SIGKILL` reçu par les ~85 threads
 simultanément (en 70 µs), sans qu'aucun `kill`/`tgkill` ne soit émis par le process lui-même.
 
 **Correctif** : rester en **mediapipe 0.10.35** (architecture pybind11, éprouvée), figée dans
-`requirements.txt`. Fonctionne sur Python 3.12 **et** 3.14 — donc aucun conflit avec `freenect`,
-qui n'est installé que pour le Python système (3.14).
+`pyproject.toml`. Fonctionne sur Python 3.12 **et** 3.14.
 
 **Ce que le correctif a permis de vérifier** :
 - Inférence mesurée à **8,5 ms/frame (≈118 FPS)** sur ce CPU — très au-dessus des 30 Hz visés,
@@ -68,17 +92,22 @@ kibird_bridge/
   pose.py       # wrapper MediaPipe PoseLandmarker — validé sur image réelle
   bridge.py     # orchestration CLI (live + --replay)
   monitor.py    # récepteur console de vérification (Plan de vérification, P1)
-tests/          # 24 tests, tous passent : for t in tests/test_*.py; do .venv/bin/python $t; done
+tests/          # 24 tests, tous passent : for t in tests/test_*.py; do uv run python $t; done
   fixtures/     # image de test réelle utilisée par le test d'intégration
 models/         # modèle .task téléchargé par run_bridge.sh (non versionné, cf. .gitignore)
+bridge_entry.py     # point d'entrée du binaire gelé (PyInstaller veut un script, pas un module)
+kibird_bridge.spec  # recette PyInstaller (mediapipe, freenect, modèle .task)
+build_bridge.sh     # gèle le bridge et le copie où on lui demande (appelé par Unity au build)
+dist/, build/       # artefacts PyInstaller, non versionnés
 ```
 
-### Ce qui reste à valider sur matériel
+### Validation matériel
 
-La Kinect a été débranchée en cours de session, donc la **boucle live complète**
-(Kinect → pose → gestes → UDP en continu) n'a pas encore tourné bout en bout. Chaque maillon
-est validé séparément : capture Kinect réelle ✅, inférence sur image réelle ✅, gestes ✅,
-protocole ✅, émission UDP ✅. À faire une fois la Kinect rebranchée :
+La **boucle live complète** (Kinect → pose → gestes → UDP) a tourné bout en bout, depuis le
+binaire gelé : flux vidéo OK, inférence à **29,8 Hz**, joueur réel suivi entre 1,98 m et 3,22 m,
+paquets reçus par le monitor à **11,5 ms** de latence — très en dessous du budget de 150 ms.
+
+Restent à vérifier à l'installation :
 
 ```bash
 ./run_bridge.sh                    # terminal 1
@@ -91,9 +120,44 @@ relancer avec `--mirror`.
 
 ## Intégration Unity
 
-Rien à câbler dans la scène. `KinectInputSource` se crée tout seul au lancement
-(`RuntimeInitializeOnLoadMethod`, avec `KinectDebugOverlay` masqué) et `MoveBird` l'interroge
-via `KinectInputSource.Instance` :
+Rien à câbler dans la scène. Au lancement du jeu, `KinectBridgeLauncher` démarre lui-même le
+bridge (et le tue proprement à la fermeture, ou le relance automatiquement — jusqu'à 5 fois —
+s'il s'arrête en cours de partie) : plus besoin d'ouvrir un terminal côté animateur.
+
+Il essaie deux sources, dans cet ordre :
+
+1. `<Build>/<Produit>_Data/StreamingAssets/kinect_bridge/kibird_bridge` — le **binaire gelé**,
+   déposé automatiquement à chaque build (voir ci-dessous). C'est le cas normal sur la machine
+   de démo ;
+2. `<dossier du projet>/tools/kinect_bridge/run_bridge.sh` — le code source, pour le poste de
+   dev et l'éditeur.
+
+Si aucune des deux n'existe, le lancement auto est simplement ignoré et le clavier reste
+disponible. Lancer le bridge à la main dans un terminal fonctionne toujours en plus, pour du
+debug.
+
+### Build : un seul dossier à copier
+
+`Assets/Editor/KinectBridgeBuildStep.cs` se déclenche après chaque build Linux : il appelle
+`build_bridge.sh`, qui gèle le bridge avec PyInstaller et copie le résultat dans les
+StreamingAssets du build. **Plus rien à copier à côté de l'exécutable**, et ni Python ni uv ne
+sont nécessaires sur la machine de démo.
+
+```bash
+./build_bridge.sh              # à la main : produit dist/kibird_bridge/ (~365 Mo, ~20 s)
+KIBIRD_SKIP_BRIDGE_BUILD=1     # variable d'env : saute l'étape pour un build de test rapide
+```
+
+Choix de packaging : `--onedir` et non `--onefile`, car le onefile réextrait les ~365 Mo dans
+`/tmp` à chaque démarrage (2-5 s de latence), incompatible avec la relance automatique du
+launcher pendant la JPO.
+
+⚠️ **Le binaire produit n'est pas portable d'une distribution à l'autre** : il embarque
+`libfreenect.so.0` et reste lié à la glibc de la machine qui l'a compilé. Builder sur une
+machine équivalente à celle de la démo (ou sur la machine de démo elle-même).
+
+`KinectInputSource` se crée tout seul de son côté au lancement (`RuntimeInitializeOnLoadMethod`,
+avec `KinectDebugOverlay` masqué) et `MoveBird` l'interroge via `KinectInputSource.Instance` :
 
 - un joueur est verrouillé et les paquets sont frais → la Kinect pilote l'oiseau ;
 - sinon (bridge éteint, personne dans la zone, perte de suivi) → le clavier reprend la main,
