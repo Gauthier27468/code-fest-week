@@ -1,7 +1,4 @@
-"""Orchestration principale : Kinect -> pose -> tracking -> gestes -> UDP (KiBird).
-
-Voir implementation_plan.md pour l'architecture complète et le contrat réseau (section 2).
-"""
+"""Orchestration principale : Kinect -> pose -> tracking -> gestes -> UDP."""
 from __future__ import annotations
 
 import argparse
@@ -11,17 +8,12 @@ import time
 from pathlib import Path
 
 from . import protocol
-from .gestures import GestureConfig, GestureState, update_gestures
-from .recorder import SessionRecorder, replay_realtime
+from .gestures import GestureConfig, GestureOutput, GestureState, update_gestures
 from .tracking import PlayerTracker, TrackingConfig
 
-def _default_model_path() -> Path:
-    """Chemin du modèle .task, que l'on tourne depuis les sources ou depuis le binaire gelé.
 
-    PyInstaller embarque le modèle comme donnée et l'extrait dans un dossier temporaire dont il
-    publie le chemin via `sys._MEIPASS` ; hors bundle, l'attribut n'existe pas et le modèle vit
-    dans `models/` à côté du paquet.
-    """
+def _default_model_path() -> Path:
+    """PyInstaller extrait le modele dans sys._MEIPASS ; hors bundle il vit dans models/."""
     bundle_dir = getattr(sys, "_MEIPASS", None)
     if bundle_dir is not None:
         return Path(bundle_dir) / "models" / "pose_landmarker_lite.task"
@@ -29,13 +21,12 @@ def _default_model_path() -> Path:
 
 
 DEFAULT_MODEL_PATH = _default_model_path()
-CALIBRATION_HOLD_S = 3.0  # maintien de la posture glide pour valider le démarrage (AGENTS.md)
+
+# Maintien de la posture bras tendus validant le demarrage.
+CALIBRATION_HOLD_S = 3.0
 TARGET_HZ = 30.0
 
-# Constaté en pratique : juste après l'ouverture du device USB, sync_get_video()/sync_get_depth()
-# renvoient parfois None sur le tout premier appel (device encore dans un état transitoire), alors
-# que refermer et rouvrir l'accès quelques instants plus tard fonctionne du premier coup. D'où ce
-# nombre de tentatives avant d'abandonner et de remonter KinectUnavailableError.
+# Juste apres l'ouverture du device USB, sync_get_video() renvoie parfois None au premier appel.
 KINECT_INIT_MAX_ATTEMPTS = 4
 KINECT_INIT_RETRY_DELAY_S = 1.5
 
@@ -48,33 +39,23 @@ def _hip_mid_pixel(skeleton: dict, width: int, height: int) -> tuple[int, int, f
 
 
 def _select_front_skeleton(
-    skeletons: list[dict], capture, depth_mm, width: int, height: int, no_depth: bool,
+    skeletons: list[dict], capture, depth_mm, width: int, height: int,
 ) -> tuple[dict | None, float, float | None, float | None]:
-    """Choisit, parmi les squelettes détectés, celui le plus proche de la Kinect.
+    """Retient le squelette le plus proche de la Kinect.
 
-    MediaPipe trie ses détections par proéminence dans l'IMAGE RGB (taille apparente,
-    netteté), pas par profondeur : un passant qui traverse derrière le joueur peut très bien
-    apparaître comme `skeletons[0]` s'il est mieux cadré. Utiliser la vraie profondeur Kinect
-    (déjà disponible via `capture.median_depth_at`, cf. capture.py) pour ne retenir que la
-    personne la plus en avant règle ce cas — AGENTS.md exige un verrouillage strict sur un
-    seul joueur et d'ignorer les intrusions.
-
-    Retourne (squelette, distance_m, hip_x, hip_y). `distance_m` vaut 0.0 (profondeur
-    inconnue) si aucun squelette n'a de profondeur valide, auquel cas on retombe sur la
-    détection la plus proéminente plutôt que de perdre le joueur pour un simple trou IR.
+    MediaPipe trie ses detections par proeminence dans l'image RGB, pas par profondeur :
+    un passant mieux cadre peut passer devant le joueur. On departage sur la vraie profondeur.
+    Retourne (squelette, distance_m, hip_x, hip_y) ; distance_m vaut 0.0 si aucune profondeur
+    valide, auquel cas on retombe sur la detection la plus proeminente.
     """
     best_skeleton = None
     best_distance = None
     best_hip = (None, None)
     for skeleton in skeletons:
         px, py, hip_x, hip_y = _hip_mid_pixel(skeleton, width, height)
-        distance = (
-            _shoulder_width_distance_fallback(skeleton)
-            if no_depth
-            else capture.median_depth_at(depth_mm, px, py)
-        )
+        distance = capture.median_depth_at(depth_mm, px, py)
         if distance <= 0.0:
-            continue  # profondeur invalide (trou IR) : impossible de comparer, on ignore
+            continue
         if best_distance is None or distance < best_distance:
             best_skeleton, best_distance, best_hip = skeleton, distance, (hip_x, hip_y)
 
@@ -89,21 +70,6 @@ def _select_front_skeleton(
     return skeleton, 0.0, hip_x, hip_y
 
 
-def _shoulder_width_distance_fallback(skeleton: dict) -> float:
-    """Estimation grossière par échelle apparente, pour développer SANS Kinect branchée.
-
-    ⚠️ Non utilisée en conditions JPO (cf. implementation_plan.md 3.1) : dépend de la
-    morphologie de la personne, donc non fiable pour un gate de zone déterministe.
-    """
-    lx, ly = skeleton["L_SHOULDER"].x, skeleton["L_SHOULDER"].y
-    rx, ry = skeleton["R_SHOULDER"].x, skeleton["R_SHOULDER"].y
-    width_norm = ((rx - lx) ** 2 + (ry - ly) ** 2) ** 0.5
-    if width_norm < 1e-6:
-        return 0.0
-    # Calibré très approximativement : largeur d'épaules ~0.18 (normalisé) à 2m.
-    return 0.18 * 2.0 / width_norm
-
-
 def _build_packet(
     seq: int,
     timestamp: float,
@@ -111,7 +77,6 @@ def _build_packet(
     distance: float,
     gesture_out,
     skeleton: dict | None,
-    replay_mode: bool = False,
 ) -> protocol.SkeletonPacket:
     joints = []
     for name in protocol.JOINT_NAMES:
@@ -130,7 +95,6 @@ def _build_packet(
         timestamp=timestamp,
         player_present=tracking_result.player_present,
         in_zone=tracking_result.in_zone,
-        replay_mode=replay_mode,
         distance=distance,
         lean=gesture_out.lean,
         lift=gesture_out.lift,
@@ -142,12 +106,10 @@ def _build_packet(
 
 
 def _grab_first_frame(capture, timeout_s: float = 8.0):
-    """Capture la première frame avec un chien de garde, avant d'annoncer qu'on émet.
+    """Capture la premiere frame avec un chien de garde.
 
-    `freenect.sync_get_video()` peut se bloquer indéfiniment quand le device USB est dans un
-    état bancal (constaté : process vivant, 0 paquet émis, aucun message). Sans ce garde-fou
-    le bridge affiche "Émission UDP..." et ne fait plus rien — le pire mode de panne possible
-    un jour de JPO, puisque tout a l'air normal côté console.
+    sync_get_video() peut se bloquer indefiniment quand le device USB est dans un etat bancal :
+    sans ce garde-fou le bridge annonce "Emission UDP..." et ne fait plus rien.
     """
     import threading
 
@@ -158,127 +120,34 @@ def _grab_first_frame(capture, timeout_s: float = 8.0):
     def worker():
         try:
             result["frame"] = capture.read()
-        except BaseException as exc:  # noqa: BLE001 - remonté tel quel au thread principal
+        except BaseException as exc:  # noqa: BLE001
             result["error"] = exc
 
-    # daemon : si sync_get_video() ne rend jamais la main, le thread reste bloqué mais le
-    # process peut quand même sortir proprement pour laisser l'animateur relancer.
     t = threading.Thread(target=worker, daemon=True)
     t.start()
     t.join(timeout_s)
 
     if t.is_alive():
         raise KinectUnavailableError(
-            f"La Kinect ne renvoie aucune image (bloquée depuis {timeout_s:.0f}s).\n"
-            "  La caméra est détectée mais le flux ne démarre pas — typiquement un device USB\n"
-            "  resté dans un état bancal après un arrêt brutal.\n"
-            "  -> Débranche puis rebranche le câble USB de la Kinect, et relance."
+            f"La Kinect ne renvoie aucune image (bloquee depuis {timeout_s:.0f}s).\n"
+            "  La camera est detectee mais le flux ne demarre pas.\n"
+            "  -> Debranche puis rebranche le cable USB de la Kinect, et relance."
         )
     if "error" in result:
         raise result["error"]
     return result["frame"]
 
 
-def run_demo(args: argparse.Namespace) -> None:
-    """Émet un joueur simulé à 30 Hz, sans Kinect, sans mediapipe et sans fichier de session.
-
-    Sert à valider la liaison bridge -> Unity (port, parsing, mapping des commandes sur
-    MoveBird) quand la Kinect n'est pas disponible : c'est la seule différence avec le mode
-    live, les paquets émis sont strictement au même format.
-    """
-    import math
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    print(f"[DEMO] joueur simulé -> {args.host}:{args.port} @ {TARGET_HZ:.0f}Hz. Ctrl+C pour arrêter.")
-
-    seq = 0
-    t0 = time.time()
-    frame_period = 1.0 / TARGET_HZ
-    try:
-        while True:
-            loop_start = time.time()
-            t = loop_start - t0
-
-            # Cycle lisible à l'œil : virage lent d'un bord à l'autre, battements réguliers,
-            # et une oscillation de vitesse plus lente pour voir bouger les trois axes.
-            lean = math.sin(t * 0.5)
-            lift = max(0.0, math.sin(t * 2.0))
-            throttle = 0.6 * math.sin(t * 0.25)
-            glide = 1.0 if abs(lift) < 0.05 else 0.0
-            distance = 2.5 - throttle
-
-            # Squelette factice cohérent avec les commandes, pour que l'overlay de debug
-            # affiche autre chose qu'un bonhomme figé.
-            roll = lean * 0.08
-            wrist_y = 0.40 - lift * 0.25
-            joints = [
-                protocol.Joint(0.50, 0.20, distance, 0.95),                      # NOSE
-                protocol.Joint(0.58, 0.35 + roll, distance, 0.95),               # L_SHOULDER
-                protocol.Joint(0.42, 0.35 - roll, distance, 0.95),               # R_SHOULDER
-                protocol.Joint(0.68, 0.38 + roll, distance, 0.90),               # L_ELBOW
-                protocol.Joint(0.32, 0.38 - roll, distance, 0.90),               # R_ELBOW
-                protocol.Joint(0.78, wrist_y + roll, distance, 0.85),            # L_WRIST
-                protocol.Joint(0.22, wrist_y - roll, distance, 0.85),            # R_WRIST
-                protocol.Joint(0.56, 0.65, distance, 0.90),                      # L_HIP
-                protocol.Joint(0.44, 0.65, distance, 0.90),                      # R_HIP
-            ]
-
-            packet = protocol.SkeletonPacket(
-                seq=seq,
-                timestamp=loop_start,
-                player_present=True,
-                in_zone=True,
-                replay_mode=True,
-                distance=distance,
-                lean=lean,
-                lift=lift,
-                throttle=throttle,
-                glide=glide,
-                confidence=0.9,
-                joints=tuple(joints),
-            )
-            sock.sendto(protocol.pack(packet), (args.host, args.port))
-            seq += 1
-
-            remaining = frame_period - (time.time() - loop_start)
-            if remaining > 0:
-                time.sleep(remaining)
-    except KeyboardInterrupt:
-        print("\nArrêt.")
-    finally:
-        sock.close()
-
-
-def run_replay(args: argparse.Namespace) -> None:
-    """Rejoue une session enregistrée : ne touche ni à la Kinect ni à mediapipe.
-
-    C'est le mode à utiliser pour tester l'intégration Unity sans matériel
-    (implementation_plan.md 3.4 et Plan de vérification P4).
-    """
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    print(f"[REPLAY] {args.replay} -> {args.host}:{args.port} (boucle={not args.no_loop})")
-    try:
-        for raw in replay_realtime(args.replay, loop=not args.no_loop):
-            sock.sendto(raw, (args.host, args.port))
-    except KeyboardInterrupt:
-        print("\nArrêt.")
-    finally:
-        sock.close()
-
-
 def run_live(args: argparse.Namespace) -> None:
-    # Imports différés : la Kinect et mediapipe ne sont nécessaires qu'en mode live,
-    # jamais en mode --replay (cf. run_replay ci-dessus).
     from .capture import KinectCapture, KinectUnavailableError
     from .pose import PoseEstimator
 
-    print(f"Chargement du modèle {args.model} ...")
+    print(f"Chargement du modele {args.model} ...")
     pose_estimator = PoseEstimator(args.model, num_poses=args.num_poses)
-    capture = KinectCapture(use_registered_depth=not args.no_depth)
-    print("Kinect initialisée.")
+    capture = KinectCapture()
+    print("Kinect initialisee.")
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    recorder = SessionRecorder(args.record) if args.record else None
 
     tracker = PlayerTracker(TrackingConfig(min_distance_m=args.min_distance, max_distance_m=args.max_distance))
     gesture_state = GestureState()
@@ -289,9 +158,7 @@ def run_live(args: argparse.Namespace) -> None:
     frame_period = 1.0 / TARGET_HZ
     last_t = time.time()
 
-    # Le premier appel valide réellement le flux : tant qu'il n'a pas rendu la main, on n'a
-    # aucune preuve que la Kinect produit des images.
-    print("Attente de la première image ...", flush=True)
+    print("Attente de la premiere image ...", flush=True)
     first_frame = None
     init_error: KinectUnavailableError | None = None
     for attempt in range(1, KINECT_INIT_MAX_ATTEMPTS + 1):
@@ -309,12 +176,12 @@ def run_live(args: argparse.Namespace) -> None:
                 )
                 capture.close()
                 time.sleep(KINECT_INIT_RETRY_DELAY_S)
-                capture = KinectCapture(use_registered_depth=not args.no_depth)
+                capture = KinectCapture()
     if init_error is not None:
         raise init_error
-    print("Flux vidéo OK.")
+    print("Flux video OK.")
 
-    print(f"Émission UDP vers {args.host}:{args.port} @ ~{TARGET_HZ:.0f}Hz. Ctrl+C pour arrêter.")
+    print(f"Emission UDP vers {args.host}:{args.port} @ ~{TARGET_HZ:.0f}Hz. Ctrl+C pour arreter.")
     frames_since_status = 0
     last_status_t = time.time()
     try:
@@ -328,8 +195,7 @@ def run_live(args: argparse.Namespace) -> None:
 
             skeletons = pose_estimator.detect(frame.rgb)
             candidate, distance, hip_x, hip_y = _select_front_skeleton(
-                skeletons, capture, frame.depth_mm,
-                frame.rgb.shape[1], frame.rgb.shape[0], args.no_depth,
+                skeletons, capture, frame.depth_mm, frame.rgb.shape[1], frame.rgb.shape[0],
             )
 
             tracking_result = tracker.update(distance, hip_x, hip_y, now=now)
@@ -343,38 +209,33 @@ def run_live(args: argparse.Namespace) -> None:
                     r_wrist=(candidate["R_WRIST"].x, candidate["R_WRIST"].y),
                     distance_m=distance,
                 )
-                # Calibration : maintien de la posture glide 3s pour figer la distance neutre
-                # (implementation_plan.md : "maintenir 3s pour valider le démarrage").
+                # Posture bras tendus tenue CALIBRATION_HOLD_S : fige la distance neutre.
                 if gesture_state.neutral_distance_m is None:
                     if gesture_out.glide > 0.95:
                         if glide_hold_start is None:
                             glide_hold_start = now
                         elif now - glide_hold_start >= CALIBRATION_HOLD_S:
                             gesture_state.neutral_distance_m = distance
-                            print(f"\n[CALIBRATION] Distance neutre fixée à {distance:.2f}m")
+                            print(f"\n[CALIBRATION] Distance neutre fixee a {distance:.2f}m")
                     else:
                         glide_hold_start = None
                 if args.mirror:
                     gesture_out.lean = -gesture_out.lean
             else:
-                from .gestures import GestureOutput
                 gesture_out = GestureOutput(lean=0.0, lift=0.0, throttle=0.0, glide=0.0)
                 glide_hold_start = None
 
             packet = _build_packet(seq, frame.timestamp, tracking_result, distance, gesture_out, candidate)
-            raw = protocol.pack(packet)
-            sock.sendto(raw, (args.host, args.port))
-            if recorder is not None:
-                recorder.write(raw, now=now)
+            sock.sendto(protocol.pack(packet), (args.host, args.port))
             seq += 1
 
-            # Ligne de statut régulière : sans elle, un blocage de la capture est indiscernable
-            # d'un fonctionnement normal (la console reste muette dans les deux cas).
+            # Sans cette ligne de statut, un blocage de la capture est indiscernable d'un
+            # fonctionnement normal : la console reste muette dans les deux cas.
             frames_since_status += 1
             if now - last_status_t >= 2.0:
                 hz = frames_since_status / (now - last_status_t)
                 if tracking_result.player_present:
-                    calib = "calibré" if gesture_state.neutral_distance_m is not None else "NON calibré (bras tendus 3s)"
+                    calib = "calibre" if gesture_state.neutral_distance_m is not None else "NON calibre (bras tendus 3s)"
                     etat = f"JOUEUR  dist={distance:.2f}m  {calib}"
                 else:
                     etat = "aucun joueur dans la zone"
@@ -382,56 +243,37 @@ def run_live(args: argparse.Namespace) -> None:
                 frames_since_status = 0
                 last_status_t = now
 
-            elapsed = time.time() - loop_start
-            remaining = frame_period - elapsed
+            remaining = frame_period - (time.time() - loop_start)
             if remaining > 0:
                 time.sleep(remaining)
     except KeyboardInterrupt:
-        print("\nArrêt.")
+        print("\nArret.")
     finally:
         sock.close()
         capture.close()
         pose_estimator.close()
-        if recorder is not None:
-            recorder.close()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7777)
-    parser.add_argument("--model", default=str(DEFAULT_MODEL_PATH), help="Chemin du modèle .task PoseLandmarker")
-    parser.add_argument("--num-poses", type=int, default=3, help="Nombre max de personnes détectées par MediaPipe")
+    parser.add_argument("--model", default=str(DEFAULT_MODEL_PATH), help="Chemin du modele .task PoseLandmarker")
+    parser.add_argument("--num-poses", type=int, default=3, help="Nombre max de personnes detectees par MediaPipe")
     parser.add_argument("--mirror", action=argparse.BooleanOptionalAction, default=False,
-                        help="Inverse gauche/droite. Le mapping par défaut est déjà naturel "
-                             "(le joueur penche vers sa gauche -> l'oiseau va à gauche) : "
-                             "n'active ce flag que si le ressenti est inversé à l'installation.")
-    parser.add_argument("--no-depth", action="store_true",
-                        help="Fallback dev SANS Kinect : distance estimée par échelle d'épaules (non fiable, cf. plan)")
+                        help="Inverse gauche/droite. Le mapping par defaut est deja naturel : "
+                             "n'active ce flag que si le ressenti est inverse a l'installation.")
     parser.add_argument("--min-distance", type=float, default=1.0)
     parser.add_argument("--max-distance", type=float, default=4.0)
-    parser.add_argument("--record", metavar="FICHIER.kbr", help="Enregistre la session en parallèle de l'émission live")
-    parser.add_argument("--replay", metavar="FICHIER.kbr", help="Rejoue une session enregistrée au lieu d'utiliser la Kinect")
-    parser.add_argument("--no-loop", action="store_true", help="Avec --replay : ne pas boucler à la fin du fichier")
-    parser.add_argument("--demo", action="store_true",
-                        help="Joueur simulé, sans Kinect ni fichier : pour vérifier la liaison avec Unity")
     args = parser.parse_args()
-
-    if args.demo:
-        run_demo(args)
-        return
-
-    if args.replay:
-        run_replay(args)
-        return
 
     from .capture import KinectUnavailableError
 
     try:
         run_live(args)
     except KinectUnavailableError as exc:
-        # Message déjà rédigé pour être lisible par un animateur, pas par un développeur :
-        # pas de traceback, et un code de sortie distinct pour un éventuel script de supervision.
+        # Message destine a un animateur, pas a un developpeur : pas de traceback,
+        # et un code de sortie distinct pour un script de supervision.
         print(f"\n{exc}\n", file=sys.stderr)
         raise SystemExit(2)
 

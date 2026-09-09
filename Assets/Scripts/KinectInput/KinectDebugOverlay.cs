@@ -1,42 +1,33 @@
 using UnityEngine;
-#if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
-#endif
 
 /// <summary>
-/// Overlay de vérification du flux Kinect : état du bridge, distance, latence, barres des
-/// quatre commandes et squelette 2D. Volontairement en OnGUI() : aucun Canvas, aucune police,
-/// aucun prefab à préparer — on pose le composant sur un GameObject et ça marche.
-///
-/// À désactiver pour la JPO (c'est un outil de mise au point, pas une UI joueur).
+/// Overlay de verification du flux Kinect (F1) : etat du bridge, distance, latence, barres des
+/// quatre commandes et squelette 2D. En OnGUI() : aucun Canvas ni prefab a preparer.
 /// </summary>
 [RequireComponent(typeof(KinectInputSource))]
 public class KinectDebugOverlay : MonoBehaviour
 {
     [Tooltip("Raccourci pour afficher/masquer l'overlay pendant une partie.")]
-#if ENABLE_INPUT_SYSTEM
     public Key toggleKey = Key.F1;
-#else
-    public KeyCode toggleKey = KeyCode.F1;
-#endif
 
     public bool visible = true;
 
-    [Tooltip("Affiche le squelette reçu, en plus des jauges.")]
+    [Tooltip("Affiche le squelette recu, en plus des jauges.")]
     public bool drawSkeleton = true;
 
     private KinectInputSource _source;
     private Texture2D _pixel;
     private GUIStyle _label;
 
-    // Os à relier pour dessiner le squelette (index dans KinectInputSource.JointNames).
+    // Os a relier pour dessiner le squelette (index dans KinectInputSource.JointNames).
     private static readonly int[,] Bones =
     {
-        { 1, 2 }, // épaules
+        { 1, 2 },           // epaules
         { 1, 3 }, { 3, 5 }, // bras gauche
         { 2, 4 }, { 4, 6 }, // bras droit
         { 1, 7 }, { 2, 8 }, // buste
-        { 7, 8 }, // hanches
+        { 7, 8 },           // hanches
     };
 
     private void Awake()
@@ -54,21 +45,8 @@ public class KinectDebugOverlay : MonoBehaviour
 
     private void Update()
     {
-        if (WasTogglePressed()) visible = !visible;
-    }
-
-    /// <summary>
-    /// Le projet est réglé sur "Input System Package (New)" seul : la classe historique
-    /// UnityEngine.Input y lève une exception à chaque appel. On passe donc par Keyboard.current.
-    /// </summary>
-    private bool WasTogglePressed()
-    {
-#if ENABLE_INPUT_SYSTEM
         var keyboard = Keyboard.current;
-        return keyboard != null && keyboard[toggleKey].wasPressedThisFrame;
-#else
-        return Input.GetKeyDown(toggleKey);
-#endif
+        if (keyboard != null && keyboard[toggleKey].wasPressedThisFrame) visible = !visible;
     }
 
     private void OnGUI()
@@ -84,41 +62,32 @@ public class KinectDebugOverlay : MonoBehaviour
         if (!_source.BridgeAlive)
         {
             GUILayout.Label("<color=#ff5555><b>BRIDGE HORS LIGNE</b></color>", _label);
-            GUILayout.Label("Aucun paquet reçu. Le script Python tourne-t-il ?\n" +
-                            "→ ./run_bridge.sh", _label);
+            GUILayout.Label("Aucun paquet recu. Le script Python tourne-t-il ?\n" +
+                            "-> ./run_bridge.sh", _label);
             GUILayout.EndArea();
             return;
         }
 
         string state = _source.HasPlayer
-            ? "<color=#55ff55><b>JOUEUR DÉTECTÉ</b></color>"
+            ? "<color=#55ff55><b>JOUEUR DETECTE</b></color>"
             : (_source.InZone
                 ? "<color=#ffaa00><b>joueur hors zone</b></color>"
                 : "<color=#ffaa00><b>en attente d'un joueur</b></color>");
-        GUILayout.Label(state + (_source.ReplayMode ? "  <i>(replay)</i>" : ""), _label);
+        GUILayout.Label(state, _label);
 
         GUILayout.Label($"Distance : <b>{_source.Distance:F2} m</b>", _label);
 
-        // La latence bout-en-bout est un critère de réussite du projet (< 150 ms).
-        // En relecture d'une session .kbr, les paquets portent l'horodatage d'origine : la
-        // "latence" calculée serait l'âge de l'enregistrement, pas une mesure — on l'annule.
-        if (_source.LatencyMs > 10000f)
-        {
-            GUILayout.Label($"Latence : <i>n/a (session rejouée)</i>   seq {_source.Sequence}", _label);
-        }
-        else
-        {
-            string latColor = _source.LatencyMs < 150f ? "#55ff55" : "#ff5555";
-            GUILayout.Label($"Latence : <color={latColor}><b>{_source.LatencyMs:F0} ms</b></color>   " +
-                            $"seq {_source.Sequence}", _label);
-        }
+        // La latence bout-en-bout est un critere de reussite du projet (< 150 ms).
+        string latColor = _source.LatencyMs < 150f ? "#55ff55" : "#ff5555";
+        GUILayout.Label($"Latence : <color={latColor}><b>{_source.LatencyMs:F0} ms</b></color>   " +
+                        $"seq {_source.Sequence}", _label);
 
         GUILayout.Space(6);
         Vector3 input = _source.Input;
         DrawBar("Gauche/Droite", input.x, -1f, 1f);
         DrawBar("Altitude", input.y, -1f, 1f);
         DrawBar("Vitesse", input.z, -1f, 1f);
-        DrawBar("Plané", _source.Glide, 0f, 1f);
+        DrawBar("Plane", _source.Glide, 0f, 1f);
 
         if (drawSkeleton)
         {
@@ -139,7 +108,7 @@ public class KinectDebugOverlay : MonoBehaviour
         float t = Mathf.InverseLerp(min, max, value);
         if (min < 0f)
         {
-            // Barre bipolaire : on remplit depuis le centre, ce qui rend le signe lisible d'un coup d'œil.
+            // Barre bipolaire : remplie depuis le centre, pour lire le signe d'un coup d'oeil.
             float centre = r.x + r.width * 0.5f;
             float end = r.x + r.width * t;
             var fill = new Rect(Mathf.Min(centre, end), r.y, Mathf.Abs(end - centre), r.height);
@@ -158,7 +127,7 @@ public class KinectDebugOverlay : MonoBehaviour
         var joints = _source.Joints;
         if (joints == null || !_source.HasPlayer) return;
 
-        // Les coordonnées arrivent normalisées dans le repère image (origine en haut à gauche).
+        // Coordonnees normalisees dans le repere image, origine en haut a gauche.
         Vector2 ToScreen(int i) => new Vector2(
             area.x + joints[i].X * area.width,
             area.y + joints[i].Y * area.height);

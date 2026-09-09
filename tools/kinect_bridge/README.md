@@ -1,16 +1,17 @@
 # Bridge Kinect → Unity (KiBird)
 
-Implémente `implementation_plan.md` (racine du repo) : capture Kinect 1414 → détection de
-pose → verrouillage joueur → traduction en gestes de vol → émission UDP binaire vers Unity.
+Capture Kinect 1414 → détection de pose → verrouillage joueur → traduction en gestes de vol
+→ émission UDP binaire vers Unity.
 
 ## Démarrage rapide
 
 ```bash
-./run_bridge.sh                          # mode live (Kinect branchée)
-./run_bridge.sh --demo                   # joueur simulé (aucun matériel, aucun fichier requis)
-./run_bridge.sh --replay session.kbr     # rejoue une session enregistrée (aucun matériel requis)
-python -m kibird_bridge.monitor          # observe les paquets reçus, dans un autre terminal
+./run_bridge.sh              # mode live (Kinect branchée)
+./run_bridge.sh --mirror     # si le ressenti gauche/droite est inversé à l'installation
 ```
+
+Sans Kinect, le jeu reste entièrement pilotable au clavier : voir
+`Assets/Scripts/KinectInput/README.md`.
 
 `run_bridge.sh` fait un `uv sync` (venv + dépendances depuis `pyproject.toml`) et télécharge le
 modèle MediaPipe au premier lancement. Pour préparer l'environnement sans lancer le bridge :
@@ -84,15 +85,13 @@ le problème au pire moment.
 
 ```
 kibird_bridge/
-  protocol.py   # contrat réseau UDP (187 octets, source de vérité — voir implementation_plan.md §2)
-  capture.py    # Kinect (freenect) : RGB + profondeur alignée — validé sur la vraie Kinect
+  protocol.py   # contrat réseau UDP (187 octets, source de vérité)
+  capture.py    # Kinect (freenect) : RGB + profondeur alignée
   tracking.py   # zone 1-4m, verrouillage joueur, délai de grâce 2.5s — 6 tests
-  gestures.py   # lean/lift/glide/throttle + filtre One Euro — 8 tests
-  recorder.py   # enregistrement/relecture de sessions .kbr — 2 tests
-  pose.py       # wrapper MediaPipe PoseLandmarker — validé sur image réelle
-  bridge.py     # orchestration CLI (live + --replay)
-  monitor.py    # récepteur console de vérification (Plan de vérification, P1)
-tests/          # 24 tests, tous passent : for t in tests/test_*.py; do uv run python $t; done
+  gestures.py   # lean/lift/glide/throttle + filtre One Euro — 13 tests
+  pose.py       # wrapper MediaPipe PoseLandmarker
+  bridge.py     # orchestration CLI
+tests/          # 28 tests : for t in tests/test_*.py; do uv run python $t; done
   fixtures/     # image de test réelle utilisée par le test d'intégration
 models/         # modèle .task téléchargé par run_bridge.sh (non versionné, cf. .gitignore)
 bridge_entry.py     # point d'entrée du binaire gelé (PyInstaller veut un script, pas un module)
@@ -103,20 +102,13 @@ dist/, build/       # artefacts PyInstaller, non versionnés
 
 ### Validation matériel
 
-La **boucle live complète** (Kinect → pose → gestes → UDP) a tourné bout en bout, depuis le
-binaire gelé : flux vidéo OK, inférence à **29,8 Hz**, joueur réel suivi entre 1,98 m et 3,22 m,
-paquets reçus par le monitor à **11,5 ms** de latence — très en dessous du budget de 150 ms.
+La boucle live complète (Kinect → pose → gestes → UDP) a tourné bout en bout depuis le binaire
+gelé : inférence à **29,8 Hz**, joueur réel suivi entre 1,98 m et 3,22 m, **11,5 ms** de latence
+— très en dessous du budget de 150 ms.
 
-Restent à vérifier à l'installation :
-
-```bash
-./run_bridge.sh                    # terminal 1
-python -m kibird_bridge.monitor    # terminal 2 : vérifier distance, lean, glide en direct
-```
-
-Points à surveiller en particulier : la distance affichée doit correspondre au mètre ruban
-(1-4 m), et le sens gauche/droite doit être naturel — si l'oiseau part du mauvais côté,
-relancer avec `--mirror`.
+À vérifier à l'installation, overlay **F1** ouvert dans Unity : la distance affichée doit
+correspondre au mètre ruban (1-4 m), et le sens gauche/droite doit être naturel — si l'oiseau
+part du mauvais côté, relancer avec `--mirror`.
 
 ## Intégration Unity
 
@@ -174,23 +166,15 @@ force le clavier.
 
 **F1** affiche/masque l'overlay de debug (état du bridge, distance, latence, jauges, squelette).
 
-## Tester sans Kinect ni mediapipe (dès maintenant)
+## Tester sans Kinect
 
-```bash
-# Terminal 1 : joueur simulé à 30 Hz (virages, battements, variation de vitesse)
-python -m kibird_bridge.bridge --demo
-
-# Terminal 2 : observer les paquets reçus (ou lancer le Play dans Unity)
-python -m kibird_bridge.monitor
-```
-
-`--replay <fichier>.kbr` rejoue à la place une vraie session enregistrée. Dans les deux cas,
-le format des paquets est identique à celui du mode live ; seul le champ `replay_mode`
-(flag bit 2) change. C'est le mode à utiliser pour travailler l'intégration Unity.
+Le jeu est entièrement jouable au clavier quand aucun joueur n'est détecté : Espace tenu 3 s
+pour démarrer, puis A/Q/D pour tourner, Espace pour battre des ailes, Ctrl/C pour piquer,
+W/Z et S pour la vitesse, Maj pour accélérer, K pour mourir. Voir
+`Assets/Scripts/KinectInput/README.md`.
 
 ## Format réseau
 
-Voir `implementation_plan.md` section 2 (racine du repo) pour la spécification complète.
-Résumé : UDP `127.0.0.1:7777`, little-endian, 187 octets/paquet, 30 Hz constants, heartbeat
+UDP `127.0.0.1:7777`, little-endian, 187 octets/paquet, 30 Hz constants, heartbeat
 même sans joueur (`player_present=false`). `kibird_bridge/protocol.py` est la source de
 vérité exécutable — s'y référer en cas de divergence avec le plan.

@@ -2,9 +2,8 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Définit la zone de jeu (limites latérales entre les montagnes et altitude) pour un bloc.
-/// Si posé sur un bloc (ou préfab de bloc), MoveBird adapte automatiquement ses limites
-/// lorsque l'oiseau traverse ce bloc le long de l'axe Z.
+/// Zone de vol d'un bloc : limites latérales et d'altitude. MoveBird s'y adapte quand l'oiseau
+/// traverse le bloc, à condition que son option useBlockBounds soit activée.
 /// </summary>
 [SelectionBase]
 public class BlockBounds : MonoBehaviour
@@ -82,9 +81,7 @@ public class BlockBounds : MonoBehaviour
         return z >= startZ && z < endZ;
     }
 
-    /// <summary>
-    /// Cherche le BlockBounds actif pour une position Z donnée.
-    /// </summary>
+    /// <summary>BlockBounds actif pour une position Z donnée, null s'il n'y en a pas.</summary>
     public static BlockBounds GetBoundsAtZ(float z)
     {
         for (int i = 0; i < AllBounds.Count; i++)
@@ -137,7 +134,6 @@ public class BlockBounds : MonoBehaviour
         Vector3 size = new Vector3(Mathf.Abs(maxX - minX), Mathf.Abs(maxHeight - minHeight), Mathf.Abs(endZ - startZ));
         Gizmos.DrawWireCube(center, size);
 
-        // Ligne de plafond en jaune
         Gizmos.color = Color.yellow;
         Gizmos.DrawLine(new Vector3(minX, maxHeight, startZ), new Vector3(maxX, maxHeight, startZ));
         Gizmos.DrawLine(new Vector3(maxX, maxHeight, startZ), new Vector3(maxX, maxHeight, endZ));

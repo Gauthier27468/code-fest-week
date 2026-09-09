@@ -1,9 +1,7 @@
-"""Verrouillage du joueur, zone valide, délai de grâce (implementation_plan.md section 3.2).
+"""Verrouillage du joueur, zone valide, delai de grace.
 
-MediaPipe Pose (Tasks API, num_poses>=1) est mono/multi-détection SANS identifiant stable
-entre frames : rien ne garantit que la personne la plus proéminente à la frame N soit la
-même qu'à la frame N+1 si un passant devient plus visible. Le verrouillage est donc fait
-ici par heuristique : gate de distance + continuité spatiale, PAS par un ID de squelette.
+MediaPipe Pose n'expose aucun identifiant stable entre frames : le verrouillage est fait
+ici par heuristique (gate de distance + continuite spatiale), pas par un ID de squelette.
 """
 from __future__ import annotations
 
@@ -22,12 +20,12 @@ class TrackingConfig:
 @dataclass
 class TrackingResult:
     in_zone: bool
-    player_present: bool  # True tant qu'on est dans le délai de grâce, même si perdu ce tick
-    is_new_lock: bool  # True uniquement au tick où le verrouillage vient d'être pris
+    player_present: bool  # True tant qu'on est dans le delai de grace
+    is_new_lock: bool  # True uniquement au tick ou le verrouillage vient d'etre pris
 
 
 class PlayerTracker:
-    """État à maintenir d'un appel à l'autre de `update()`, un par processus bridge (mono-joueur)."""
+    """Un tracker par processus bridge (mono-joueur)."""
 
     def __init__(self, config: TrackingConfig | None = None) -> None:
         self.config = config or TrackingConfig()
@@ -53,9 +51,7 @@ class PlayerTracker:
         hip_mid_y: float | None,
         now: float | None = None,
     ) -> TrackingResult:
-        """À appeler une fois par frame, même quand aucune pose n'est détectée
-        (passer hip_mid_x/y=None dans ce cas). `distance_m` = 0.0 si inconnue.
-        """
+        """A appeler une fois par frame, meme sans pose detectee (hip_mid_x/y=None)."""
         now = now if now is not None else time.time()
         cfg = self.config
 
@@ -64,7 +60,7 @@ class PlayerTracker:
 
         candidate_valid = in_zone and has_pose
 
-        # Rejet de continuité : un saut trop grand n'est pas *cette* personne.
+        # Un saut trop grand n'est pas *cette* personne.
         if candidate_valid and self._locked and self._last_hip_x is not None:
             jump = ((hip_mid_x - self._last_hip_x) ** 2 + (hip_mid_y - self._last_hip_y) ** 2) ** 0.5
             if jump > cfg.max_jump_m:
@@ -80,12 +76,10 @@ class PlayerTracker:
             self._last_valid_time = now
             return TrackingResult(in_zone=True, player_present=True, is_new_lock=is_new_lock)
 
-        # Pas de candidat valide ce tick : appliquer le délai de grâce si on était verrouillé.
         if self._locked and self._last_valid_time is not None:
             elapsed = now - self._last_valid_time
             if elapsed <= cfg.grace_period_s:
                 return TrackingResult(in_zone=in_zone, player_present=True, is_new_lock=False)
 
-        # Grâce expirée ou jamais verrouillé : perte effective.
         self.reset()
         return TrackingResult(in_zone=in_zone, player_present=False, is_new_lock=False)

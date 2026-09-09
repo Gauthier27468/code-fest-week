@@ -8,11 +8,9 @@ using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-// Construit l'écran de démarrage de KiBird directement dans la scène de jeu (Blocks.unity).
-// Crée une interface soignée adaptée à une borne d'arcade JPO :
-// - Carte des scores en verre dépoli (Last Score & Best Score)
-// - Capsule de consigne épurée avec décompte réactif
-// - Badge central harmonisé avec l'univers graphique
+// Reconstruit l'écran de démarrage de KiBird dans Blocks.unity.
+// ATTENTION : détruit et régénère tout le contenu de Canvas/MainMenu. Les retouches faites à la
+// main dans la scène sont perdues. Ne lancer que pour repartir d'un menu propre.
 public static class KiBirdMenuBuilder
 {
     private const string GameScenePath = "Assets/Scenes/Blocks.unity";
@@ -20,7 +18,6 @@ public static class KiBirdMenuBuilder
     private const string LogoPath = "Assets/Art/custom/logo-kibird.png";
     private const string UiFontPath = "Assets/Art/Fonts/LuckiestGuy-Regular.ttf";
 
-    // Palette visuelle cohérente avec le logo KiBird et le décor low-poly
     private static readonly Color BackgroundOverlayColor = new Color(0.02f, 0.05f, 0.10f, 0.25f);
     private static readonly Color CardBgColor = new Color(0.06f, 0.11f, 0.20f, 0.88f);
     private static readonly Color CardOutlineColor = new Color(0.35f, 0.65f, 0.95f, 0.35f);
@@ -61,7 +58,6 @@ public static class KiBirdMenuBuilder
             BuildEventSystem(menuRoot.transform);
         }
 
-        // Trouver ou créer le Canvas
         Canvas canvas = menuRoot.GetComponentInChildren<Canvas>();
         RectTransform canvasRT;
         if (canvas == null)
@@ -74,7 +70,6 @@ public static class KiBirdMenuBuilder
             canvasRT = canvas.GetComponent<RectTransform>();
         }
 
-        // Identifier GameMenu s'il existe déjà
         GameObject gameMenuGO = null;
         Transform existingGameMenu = canvasRT.Find("GameMenu");
         if (existingGameMenu != null)
@@ -82,12 +77,10 @@ public static class KiBirdMenuBuilder
             gameMenuGO = existingGameMenu.gameObject;
         }
 
-        // Trouver ou créer MainMenu (la racine visuelle du menu principal)
         Transform existingMainMenu = canvasRT.Find("MainMenu");
         GameObject mainMenuRoot;
         if (existingMainMenu != null)
         {
-            // Nettoyer les anciens enfants de MainMenu pour une reconstruction propre
             for (int i = existingMainMenu.childCount - 1; i >= 0; i--)
             {
                 Object.DestroyImmediate(existingMainMenu.GetChild(i).gameObject);
@@ -107,16 +100,13 @@ public static class KiBirdMenuBuilder
 
         RectTransform mmTransform = mainMenuRoot.GetComponent<RectTransform>();
 
-        // 1. Voile de fond doux
         CreateBackgroundOverlay(mmTransform);
 
-        // 2. Logo KiBird
         CreateLogo(mmTransform, logoSprite);
 
-        // 3. Carte des scores épurée (Last Score & Best Score)
         RectTransform scoreCard = CreateRect(mmTransform, "ScoreCard",
             new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
-            new Vector2(300f, 230f), new Vector2(48f, -40f));
+            new Vector2(300f, 400f), new Vector2(48f, -40f));
         Image cardImg = scoreCard.gameObject.AddComponent<Image>();
         cardImg.sprite = roundedRectSprite;
         cardImg.type = Image.Type.Sliced;
@@ -136,14 +126,11 @@ public static class KiBirdMenuBuilder
         cardLayout.childForceExpandWidth = true;
         cardLayout.childForceExpandHeight = false;
 
-        // En-tête : 🏆 SCORES
         CreateText(scoreCard.transform, "Header", "🏆 SCORES", 22, FontStyle.Bold,
             TextAnchor.UpperLeft, TextHeaderColor, 28f);
 
-        // Séparateur fin
         CreateDivider(scoreCard.transform, "Divider1", new Color(1f, 1f, 1f, 0.12f), 2f);
 
-        // Bloc LAST SCORE
         RectTransform lastBlock = CreateRect(scoreCard.transform, "LastScoreBlock",
             Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
         var lastLayout = lastBlock.gameObject.AddComponent<VerticalLayoutGroup>();
@@ -158,10 +145,8 @@ public static class KiBirdMenuBuilder
         Text lastScoreText = CreateText(lastBlock.transform, "Value", "0", 32, FontStyle.Bold,
             TextAnchor.UpperLeft, TextColor, 38f);
 
-        // Séparateur fin
         CreateDivider(scoreCard.transform, "Divider2", new Color(1f, 1f, 1f, 0.10f), 2f);
 
-        // Bloc BEST SCORE
         RectTransform bestBlock = CreateRect(scoreCard.transform, "BestScoreBlock",
             Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
         var bestLayout = bestBlock.gameObject.AddComponent<VerticalLayoutGroup>();
@@ -177,7 +162,22 @@ public static class KiBirdMenuBuilder
             TextAnchor.UpperLeft, AccentColor, 40f);
         bestScoreText.gameObject.AddComponent<PulseEffect>();
 
-        // 4. Badge circulaire central
+        CreateDivider(scoreCard.transform, "Divider3", new Color(1f, 1f, 1f, 0.10f), 2f);
+
+        RectTransform topBlock = CreateRect(scoreCard.transform, "TopScoresBlock",
+            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        var topLayout = topBlock.gameObject.AddComponent<VerticalLayoutGroup>();
+        topLayout.spacing = 2f;
+        topLayout.childControlWidth = true;
+        topLayout.childControlHeight = false;
+        var topLE = topBlock.gameObject.AddComponent<LayoutElement>();
+        topLE.preferredHeight = 150f;
+
+        CreateText(topBlock.transform, "Title", "TOP 5", 15, FontStyle.Bold,
+            TextAnchor.UpperLeft, TextMutedColor, 18f);
+        Text leaderboardText = CreateText(topBlock.transform, "Value", "-", 22, FontStyle.Normal,
+            TextAnchor.UpperLeft, TextColor, 128f);
+
         Vector2 badgeCenter = new Vector2(0f, 15f);
         RectTransform badgeRing = CreateRect(mmTransform, "PlayerBadgeRing",
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
@@ -220,7 +220,6 @@ public static class KiBirdMenuBuilder
         SilhouetteRig playerSilhouette = silhouetteRoot.AddComponent<SilhouetteRig>();
         playerSilhouette.Configure(silBody, silLeftArm, silRightArm);
 
-        // 5. Capsule de consigne / décompte
         RectTransform promptBanner = CreateRect(mmTransform, "PromptBanner",
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
             new Vector2(660f, 62f), new Vector2(0f, -185f));
@@ -243,7 +242,6 @@ public static class KiBirdMenuBuilder
         promptRT.sizeDelta = Vector2.zero;
         promptRT.anchoredPosition = Vector2.zero;
 
-        // 6. MenuController
         MenuController controller = menuRoot.GetComponentInChildren<MenuController>();
         DemoKeyboardInput input = menuRoot.GetComponentInChildren<DemoKeyboardInput>();
         KinectStartInputSource kinectInput = menuRoot.GetComponentInChildren<KinectStartInputSource>();
@@ -257,8 +255,8 @@ public static class KiBirdMenuBuilder
             controller = controllerGO.AddComponent<MenuController>();
         }
 
-        controller.Configure(input, kinectInput, playerSilhouette, lastScoreText, bestScoreText, promptText,
-            progressFill, mainMenuRoot, gameMenuGO);
+        controller.Configure(input, kinectInput, playerSilhouette, lastScoreText, bestScoreText,
+            leaderboardText, promptText, progressFill, mainMenuRoot, gameMenuGO);
 
         RegisterSceneInBuildSettings();
         EditorSceneManager.MarkSceneDirty(scene);

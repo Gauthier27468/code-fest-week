@@ -2,89 +2,65 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Générateur procédural de circuit (KiBird).
-/// - Aligne N blocs sur l'axe Z espacés de 48m.
-/// - Séquence garantie : Intro (0), Tuto 1 (1), Tuto 2 (2), Blocs aléatoires (3 .. N-2), Ending Block (N-1).
-/// - Détruit automatiquement les blocs dépassés derrière l'oiseau pour libérer la mémoire.
-/// - Configure le brouillard (fog) et le farClipPlane de la caméra pour n'afficher que 3 à 5 blocs devant.
+/// Générateur procédural du circuit : N blocs alignés sur l'axe Z, espacés de blockInterval.
+/// Séquence garantie : Intro (0), Tuto 1 (1), Tuto 2 (2), blocs aléatoires (3..N-2), Ending (N-1).
+/// Les blocs sont instanciés à l'approche de l'oiseau et détruits une fois dépassés.
 /// </summary>
 public class MapGenerator : MonoBehaviour
 {
     public static MapGenerator Instance { get; private set; }
 
     [Header("Configuration des Blocs (Nombre Total N)")]
-    [Tooltip("Nombre total n de blocs à générer pour la course (inclut Intro, Tuto 1, Tuto 2, blocs aléatoires et Ending). Minimum 4.")]
+    [Tooltip("Nombre total de blocs de la course, Intro / Tutos / Ending compris. Minimum 4.")]
     [Range(4, 100)]
     public int totalBlocks = 12;
 
-    [Tooltip("Espacement régulier sur l'axe Z entre l'origine de chaque bloc (calibré à 48m).")]
+    [Tooltip("Espacement régulier sur l'axe Z entre l'origine de chaque bloc.")]
     public float blockInterval = 48f;
 
     [Tooltip("Position Z du tout premier bloc (Intro).")]
     public float startZ = 0f;
 
     [Header("Préfabs de la Séquence Fixe")]
-    [Tooltip("1er bloc obligatoire : Intro")]
     public GameObject introPrefab;
-
-    [Tooltip("2ème bloc obligatoire : Tutoriel 1")]
     public GameObject tuto1Prefab;
-
-    [Tooltip("3ème bloc obligatoire : Tutoriel 2")]
     public GameObject tuto2Prefab;
-
-    [Tooltip("Dernier bloc obligatoire (N-1) : Ending Block")]
     public GameObject endingPrefab;
 
     [Header("Pool de Blocs Aléatoires")]
-    [Tooltip("Liste des préfabs de blocs d'obstacles/gameplay tirés au sort entre les tutos et la fin.")]
+    [Tooltip("Blocs d'obstacles tirés au sort entre les tutos et la fin.")]
     public List<GameObject> randomBlockPrefabs = new List<GameObject>();
 
-    [Tooltip("Évite de piocher deux fois d'affilée le même bloc aléatoire.")]
-    public bool avoidConsecutiveDuplicates = true;
-
-    [Header("Streaming & Nettoyage (Performances)")]
-    [Tooltip("Si activé, instancie les blocs progressivement à l'approche de l'oiseau. Si désactivé, instancie tous les N blocs au Start().")]
-    public bool streamBlocksAhead = true;
-
-    [Tooltip("Nombre de blocs à garder instanciés d'avance devant l'oiseau (3 à 5 recommandé pour correspondre au brouillard).")]
+    [Header("Streaming & Nettoyage")]
+    [Tooltip("Nombre de blocs gardés instanciés d'avance devant l'oiseau.")]
     [Range(2, 10)]
     public int spawnAheadBlocks = 5;
 
-    [Tooltip("Détruit automatiquement un bloc une fois que l'oiseau l'a dépassé pour alléger la scène.")]
+    [Tooltip("Détruit un bloc une fois que l'oiseau l'a dépassé.")]
     public bool destroyPassedBlocks = true;
 
-    [Tooltip("Distance derrière l'oiseau à partir de laquelle un bloc dépassé est détruit (en mètres).")]
+    [Tooltip("Distance derrière l'oiseau à partir de laquelle un bloc dépassé est détruit (m).")]
     public float destroyDistanceBehind = 24f;
 
-    [Header("Effet de Brouillard (Fog & Caméra)")]
-    [Tooltip("Active et configure le brouillard Unity pour masquer les blocs au-delà de 3 à 5 blocs.")]
+    [Header("Brouillard & Caméra")]
+    [Tooltip("Masque les blocs au-delà de la distance de rendu utile.")]
     public bool enableFog = true;
 
-    [Tooltip("Distance (en nombre de blocs) où le brouillard commence à apparaître (ex: 3 blocs = 144m).")]
+    [Tooltip("Distance, en nombre de blocs, où le brouillard commence.")]
     public float fogStartBlocks = 3f;
 
-    [Tooltip("Distance (en nombre de blocs) où le brouillard devient totalement opaque (ex: 5 blocs = 240m).")]
+    [Tooltip("Distance, en nombre de blocs, où le brouillard devient opaque.")]
     public float fogEndBlocks = 5f;
 
-    [Tooltip("Synchronise la couleur du brouillard avec le fond de la caméra principale (recommandé pour un fondu invisible).")]
-    public bool syncFogWithCameraBackground = true;
-
-    [Tooltip("Couleur personnalisée du brouillard si la synchronisation caméra est désactivée.")]
-    public Color customFogColor = new Color(0.192f, 0.302f, 0.475f, 1f);
-
-    [Tooltip("Ajuste le farClipPlane de la caméra principale à la fin du brouillard pour ne pas calculer les polygones invisibles.")]
+    [Tooltip("Aligne le farClipPlane de la caméra sur la fin du brouillard.")]
     public bool adjustCameraFarClip = true;
 
     [Header("Hiérarchie & Références")]
-    [Tooltip("Transform parent sous lequel instancier les blocs générés. Si vide, utilise ce GameObject.")]
+    [Tooltip("Parent des blocs générés. Si vide, ce GameObject.")]
     public Transform blocksParent;
 
-    [Tooltip("Transform de l'oiseau. Trouvé automatiquement via MoveBird ou tag Player si laissé vide.")]
+    [Tooltip("Transform de l'oiseau. Trouvé via MoveBird ou le tag Player si laissé vide.")]
     public Transform birdTransform;
-
-    [Tooltip("Nettoie les éventuels blocs statiques déjà présents dans la scène au démarrage pour éviter tout doublon.")]
-    public bool cleanSceneBlocksAtStart = true;
 
     [System.Serializable]
     public class BlockSlot
@@ -124,28 +100,10 @@ public class MapGenerator : MonoBehaviour
     private void Start()
     {
         FindBird();
-
-        if (cleanSceneBlocksAtStart)
-        {
-            CleanExistingSceneBlocks();
-        }
-
+        CleanExistingSceneBlocks();
         SetupFog();
         BuildPlan();
-
-        if (!streamBlocksAhead)
-        {
-            // Instanciation de tous les blocs d'un coup au démarrage
-            for (int i = 0; i < slots.Length; i++)
-            {
-                SpawnBlock(i);
-            }
-        }
-        else
-        {
-            // Instanciation initiale de la fenêtre de départ
-            UpdateStreaming(birdTransform != null ? birdTransform.position.z : startZ);
-        }
+        UpdateStreaming(birdTransform != null ? birdTransform.position.z : startZ);
     }
 
     private void Update()
@@ -157,11 +115,7 @@ public class MapGenerator : MonoBehaviour
         }
 
         float birdZ = birdTransform.position.z;
-
-        if (streamBlocksAhead)
-        {
-            UpdateStreaming(birdZ);
-        }
+        UpdateStreaming(birdZ);
 
         if (destroyPassedBlocks)
         {
@@ -169,41 +123,21 @@ public class MapGenerator : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Construit le plan complet des N blocs selon les règles :
-    /// 0 : Intro
-    /// 1 : Tuto 1
-    /// 2 : Tuto 2
-    /// 3 .. N-2 : Aléatoires
-    /// N-1 : Ending Block
-    /// </summary>
+    /// <summary>Construit le plan des N blocs : Intro, Tuto 1, Tuto 2, aléatoires, Ending.</summary>
     public void BuildPlan()
     {
         int count = Mathf.Max(4, totalBlocks);
         slots = new BlockSlot[count];
-
         lastRandomPicked = null;
 
         for (int i = 0; i < count; i++)
         {
             GameObject chosenPrefab;
 
-            if (i == 0)
-            {
-                chosenPrefab = introPrefab;
-            }
-            else if (i == 1)
-            {
-                chosenPrefab = tuto1Prefab;
-            }
-            else if (i == 2)
-            {
-                chosenPrefab = tuto2Prefab;
-            }
-            else if (i == count - 1)
-            {
-                chosenPrefab = endingPrefab;
-            }
+            if (i == 0) chosenPrefab = introPrefab;
+            else if (i == 1) chosenPrefab = tuto1Prefab;
+            else if (i == 2) chosenPrefab = tuto2Prefab;
+            else if (i == count - 1) chosenPrefab = endingPrefab;
             else
             {
                 chosenPrefab = PickRandomBlock();
@@ -221,27 +155,18 @@ public class MapGenerator : MonoBehaviour
         }
     }
 
+    /// <summary>Tire un bloc au sort en évitant de répéter le précédent.</summary>
     private GameObject PickRandomBlock()
     {
-        if (randomBlockPrefabs == null || randomBlockPrefabs.Count == 0)
-        {
-            return null;
-        }
-
-        if (randomBlockPrefabs.Count == 1)
-        {
-            return randomBlockPrefabs[0];
-        }
+        if (randomBlockPrefabs == null || randomBlockPrefabs.Count == 0) return null;
+        if (randomBlockPrefabs.Count == 1) return randomBlockPrefabs[0];
 
         GameObject picked = null;
         int attempts = 10;
         while (attempts-- > 0)
         {
             picked = randomBlockPrefabs[Random.Range(0, randomBlockPrefabs.Count)];
-            if (!avoidConsecutiveDuplicates || picked != lastRandomPicked)
-            {
-                break;
-            }
+            if (picked != lastRandomPicked) break;
         }
 
         return picked != null ? picked : randomBlockPrefabs[0];
@@ -258,15 +183,10 @@ public class MapGenerator : MonoBehaviour
             var slot = slots[i];
             if (slot == null || slot.isDestroyed || slot.isSpawned) continue;
 
-            if (slot.zPosition <= maxSpawnZ)
-            {
-                SpawnBlock(i);
-            }
-            else
-            {
-                // Comme les blocs sont ordonnés en Z croissant, on peut s'arrêter dès qu'un bloc dépasse la distance
-                break;
-            }
+            // Blocs ordonnés en Z croissant : le premier trop loin arrête le parcours.
+            if (slot.zPosition > maxSpawnZ) break;
+
+            SpawnBlock(i);
         }
     }
 
@@ -277,27 +197,26 @@ public class MapGenerator : MonoBehaviour
         if (slot.isSpawned || slot.isDestroyed || slot.prefab == null) return;
 
         Transform parent = blocksParent != null ? blocksParent : transform;
-        Vector3 pos = new Vector3(0f, 0f, slot.zPosition);
-
-        GameObject instance = Instantiate(slot.prefab, pos, Quaternion.identity, parent);
+        GameObject instance = Instantiate(slot.prefab, new Vector3(0f, 0f, slot.zPosition),
+            Quaternion.identity, parent);
         instance.name = $"[{slot.index:D2}] {slot.prefab.name} (Z={slot.zPosition:F0})";
         slot.instance = instance;
 
-        // Si c'est le bloc de fin, garantir que BirdNestTrigger est bien présent sur Bird Nest
-        if (slot.prefab == endingPrefab || instance.name.IndexOf("Ending", System.StringComparison.OrdinalIgnoreCase) >= 0)
+        if (slot.prefab == endingPrefab ||
+            instance.name.IndexOf("Ending", System.StringComparison.OrdinalIgnoreCase) >= 0)
         {
             SetupEndingBlockNest(instance);
         }
     }
 
+    /// <summary>Garantit qu'un BirdNestTrigger est présent sur le nid du bloc de fin.</summary>
     private void SetupEndingBlockNest(GameObject endingInstance)
     {
         if (endingInstance == null) return;
-        BirdNestTrigger existingTrigger = endingInstance.GetComponentInChildren<BirdNestTrigger>(true);
-        if (existingTrigger != null) return;
+        if (endingInstance.GetComponentInChildren<BirdNestTrigger>(true) != null) return;
 
-        // Recherche du nid dans les enfants
-        Transform nest = endingInstance.transform.Find("Content/Bird Nest") ?? endingInstance.transform.Find("Bird Nest");
+        Transform nest = endingInstance.transform.Find("Content/Bird Nest")
+                      ?? endingInstance.transform.Find("Bird Nest");
         if (nest == null)
         {
             foreach (Transform child in endingInstance.GetComponentsInChildren<Transform>(true))
@@ -310,24 +229,22 @@ public class MapGenerator : MonoBehaviour
             }
         }
 
-        if (nest != null)
-        {
-            Collider col = nest.GetComponent<Collider>();
-            if (col == null)
-            {
-                BoxCollider box = nest.gameObject.AddComponent<BoxCollider>();
-                box.isTrigger = true;
-                box.size = new Vector3(4f, 3f, 4f);
-                box.center = new Vector3(0f, 0.5f, 0f);
-            }
-            else
-            {
-                col.isTrigger = true;
-            }
+        if (nest == null) return;
 
-            nest.gameObject.AddComponent<BirdNestTrigger>();
-            Debug.Log($"[MapGenerator] BirdNestTrigger configuré automatiquement sur '{nest.name}' dans le bloc de fin.");
+        Collider col = nest.GetComponent<Collider>();
+        if (col == null)
+        {
+            BoxCollider box = nest.gameObject.AddComponent<BoxCollider>();
+            box.isTrigger = true;
+            box.size = new Vector3(4f, 3f, 4f);
+            box.center = new Vector3(0f, 0.5f, 0f);
         }
+        else
+        {
+            col.isTrigger = true;
+        }
+
+        nest.gameObject.AddComponent<BirdNestTrigger>();
     }
 
     private void UpdateDestruction(float birdZ)
@@ -339,24 +256,17 @@ public class MapGenerator : MonoBehaviour
             var slot = slots[i];
             if (slot == null || !slot.isSpawned || slot.isDestroyed) continue;
 
-            // La sortie du bloc est située à zPosition + blockInterval
             float blockExitZ = slot.zPosition + blockInterval;
-
             if (birdZ > blockExitZ + destroyDistanceBehind)
             {
-                if (slot.instance != null)
-                {
-                    Destroy(slot.instance);
-                }
+                if (slot.instance != null) Destroy(slot.instance);
                 slot.instance = null;
                 slot.isDestroyed = true;
             }
         }
     }
 
-    /// <summary>
-    /// Configure le brouillard (Linear Fog) et le farClipPlane de la caméra.
-    /// </summary>
+    /// <summary>Brouillard linéaire calé sur la couleur de fond de la caméra.</summary>
     public void SetupFog()
     {
         if (!enableFog) return;
@@ -371,22 +281,14 @@ public class MapGenerator : MonoBehaviour
         RenderSettings.fogEndDistance = endDist;
 
         Camera cam = Camera.main;
-        Color fogCol = customFogColor;
-
         if (cam != null)
         {
-            if (syncFogWithCameraBackground)
-            {
-                fogCol = cam.backgroundColor;
-            }
-
+            RenderSettings.fogColor = cam.backgroundColor;
             if (adjustCameraFarClip)
             {
                 cam.farClipPlane = endDist + 20f;
             }
         }
-
-        RenderSettings.fogColor = fogCol;
     }
 
     private void FindBird()
@@ -413,17 +315,17 @@ public class MapGenerator : MonoBehaviour
         }
     }
 
+    /// <summary>Supprime les blocs statiques laissés dans la scène, hors de ce générateur.</summary>
     private void CleanExistingSceneBlocks()
     {
-        // Supprime les blocs statiques de la scène qui ne font pas partie de ce générateur
         var existingBounds = Object.FindObjectsByType<BlockBounds>(FindObjectsSortMode.None);
         foreach (var b in existingBounds)
         {
-            if (b != null && b.transform != transform && !b.transform.IsChildOf(transform) && (blocksParent == null || (b.transform != blocksParent && !b.transform.IsChildOf(blocksParent))))
-            {
-                Transform root = b.transform;
-                Destroy(root.gameObject);
-            }
+            if (b == null || b.transform == transform || b.transform.IsChildOf(transform)) continue;
+            if (blocksParent != null &&
+                (b.transform == blocksParent || b.transform.IsChildOf(blocksParent))) continue;
+
+            Destroy(b.gameObject);
         }
     }
 
@@ -441,14 +343,14 @@ public class MapGenerator : MonoBehaviour
     [ContextMenu("Auto-Assigner Préfabs depuis le Projet")]
     public void AutoAssignPrefabs()
     {
-        string envPath = "Assets/Prefabs/Environment/";
+        const string envPath = "Assets/Prefabs/Environment/";
 
         introPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(envPath + "Intro.prefab");
         tuto1Prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(envPath + "Turoriel1.prefab");
         tuto2Prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(envPath + "Turoriel2.prefab");
         endingPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(envPath + "EndingBlock.prefab");
 
-        string[] randomNames = new string[]
+        string[] randomNames =
         {
             "ArchesBlock.prefab",
             "FallenRockBlock.prefab",
@@ -463,14 +365,11 @@ public class MapGenerator : MonoBehaviour
         foreach (string name in randomNames)
         {
             GameObject go = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(envPath + name);
-            if (go != null)
-            {
-                randomBlockPrefabs.Add(go);
-            }
+            if (go != null) randomBlockPrefabs.Add(go);
         }
 
         UnityEditor.EditorUtility.SetDirty(this);
-        Debug.Log($"[MapGenerator] Préfabs assignés avec succès ! (Intro, Tuto1, Tuto2, Ending + {randomBlockPrefabs.Count} blocs aléatoires)");
+        Debug.Log($"[MapGenerator] Préfabs assignés ({randomBlockPrefabs.Count} blocs aléatoires).");
     }
 
     [ContextMenu("Générer la Map (Preview Éditeur)")]
@@ -483,33 +382,24 @@ public class MapGenerator : MonoBehaviour
         for (int i = 0; i < slots.Length; i++)
         {
             var slot = slots[i];
-            if (slot != null && slot.prefab != null)
-            {
-                GameObject instance = (GameObject)UnityEditor.PrefabUtility.InstantiatePrefab(slot.prefab, parent);
-                instance.transform.position = new Vector3(0f, 0f, slot.zPosition);
-                instance.name = $"[PREVIEW {slot.index:D2}] {slot.prefab.name} (Z={slot.zPosition:F0})";
-                slot.instance = instance;
-            }
+            if (slot == null || slot.prefab == null) continue;
+
+            GameObject instance = (GameObject)UnityEditor.PrefabUtility.InstantiatePrefab(slot.prefab, parent);
+            instance.transform.position = new Vector3(0f, 0f, slot.zPosition);
+            instance.name = $"[PREVIEW {slot.index:D2}] {slot.prefab.name} (Z={slot.zPosition:F0})";
+            slot.instance = instance;
         }
 
-        Debug.Log($"[MapGenerator] Preview de la map générée dans l'éditeur ({slots.Length} blocs).");
+        Debug.Log($"[MapGenerator] Preview générée ({slots.Length} blocs).");
     }
 
     [ContextMenu("Nettoyer la Map (Éditeur)")]
     public void ClearMapEditor()
     {
         Transform parent = blocksParent != null ? blocksParent : transform;
-        List<GameObject> toDestroy = new List<GameObject>();
-
         for (int i = parent.childCount - 1; i >= 0; i--)
         {
-            Transform child = parent.GetChild(i);
-            toDestroy.Add(child.gameObject);
-        }
-
-        foreach (var go in toDestroy)
-        {
-            DestroyImmediate(go);
+            DestroyImmediate(parent.GetChild(i).gameObject);
         }
 
         slots = null;
@@ -531,22 +421,18 @@ public class MapGenerator : MonoBehaviour
         {
             float z = startZ + i * blockInterval;
             Vector3 center = new Vector3(3.9f, 5.5f, z + blockInterval * 0.5f);
-            Vector3 size = new Vector3(9.8f, 8f, blockInterval);
-            Gizmos.DrawWireCube(center, size);
+            Gizmos.DrawWireCube(center, new Vector3(9.8f, 8f, blockInterval));
         }
 
-        // Ligne de fog
-        if (enableFog)
-        {
-            float birdZ = birdTransform != null ? birdTransform.position.z : startZ;
-            float fogStart = birdZ + fogStartBlocks * blockInterval;
-            float fogEnd = birdZ + fogEndBlocks * blockInterval;
+        if (!enableFog) return;
 
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawLine(new Vector3(-5f, 5f, fogStart), new Vector3(15f, 5f, fogStart));
+        float birdZ = birdTransform != null ? birdTransform.position.z : startZ;
+        Gizmos.color = Color.yellow;
+        float fogStart = birdZ + fogStartBlocks * blockInterval;
+        Gizmos.DrawLine(new Vector3(-5f, 5f, fogStart), new Vector3(15f, 5f, fogStart));
 
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawLine(new Vector3(-5f, 5f, fogEnd), new Vector3(15f, 5f, fogEnd));
-        }
+        Gizmos.color = Color.cyan;
+        float fogEnd = birdZ + fogEndBlocks * blockInterval;
+        Gizmos.DrawLine(new Vector3(-5f, 5f, fogEnd), new Vector3(15f, 5f, fogEnd));
     }
 }

@@ -2,8 +2,7 @@ using UnityEngine;
 
 namespace KiBird.MainMenu
 {
-    // Fait légèrement grossir/rétrécir un élément d'UI en boucle, pour attirer l'oeil sur les
-    // textes d'accent (score, libellés du tutoriel).
+    /// <summary>Pulsation d'échelle en boucle, pour attirer l'oeil sur un texte d'accent.</summary>
     public class PulseEffect : MonoBehaviour
     {
         [SerializeField] private float scaleAmplitude = 0.06f;
