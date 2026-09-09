@@ -90,9 +90,32 @@ kibird_bridge/
   tracking.py   # zone 1-4m, verrouillage joueur, délai de grâce 2.5s — 6 tests
   gestures.py   # lean/lift/glide/throttle + filtre One Euro — 13 tests
   segmentation.py # suppression du fond au-delà de 4 m via la profondeur IR — 6 tests
-  pose.py       # wrapper MediaPipe PoseLandmarker
-  bridge.py     # orchestration CLI
-tests/          # 34 tests : for t in tests/test_*.py; do uv run python $t; done
+### Retour caméra avec overlay (`--preview`)
+
+Ouvre une fenêtre OpenCV montrant l'image de la Kinect avec, superposés : tous les squelettes
+détectés par MediaPipe (le joueur verrouillé en vert épais, les détections ignorées en gris
+fin), la taille des points proportionnelle à la confiance du landmark, et un HUD avec la
+cadence, la distance, l'état zone/calibration et les 4 commandes envoyées à Unity.
+
+```bash
+./run_bridge.sh --preview                     # fenêtre plein format
+./run_bridge.sh --preview --preview-scale 0.5 # demi-taille, pour laisser la place au jeu
+```
+
+Touches dans la fenêtre : `q` / `Échap` arrêtent le bridge, `f` bascule entre l'image brute de
+la caméra et l'image réellement envoyée à MediaPipe (utile pour régler `--bg-max-distance`).
+
+Prérequis : un OpenCV **avec** HighGUI, absent du wheel `opencv-python-headless` installé par
+défaut. Il est déclaré dans l'extra `preview` :
+
+```bash
+uv sync --extra preview
+```
+
+Option de debug/réglage : `imshow` coûte quelques millisecondes par frame et la fenêtre
+s'affiche par-dessus le jeu — à ne pas activer pendant une JPO.
+
+### Validation matériel
   fixtures/     # image de test réelle utilisée par le test d'intégration
 models/         # modèle .task téléchargé par run_bridge.sh (non versionné, cf. .gitignore)
 bridge_entry.py     # point d'entrée du binaire gelé (PyInstaller veut un script, pas un module)
@@ -115,6 +138,31 @@ passent derrière le joueur ne produisent donc plus de squelette du tout. Coût 
 
 Garde-fous : les trous IR sur le joueur sont bouchés (fermeture morphologique) et une depth
 inexploitable laisse l'image intacte plutôt que de la noircir entièrement.
+
+### Retour caméra avec overlay (`--preview`)
+
+Ouvre une fenêtre OpenCV montrant l'image de la Kinect avec, superposés : tous les squelettes
+détectés par MediaPipe (le joueur verrouillé en vert épais, les détections ignorées en gris
+fin), la taille des points proportionnelle à la confiance du landmark, et un HUD avec la
+cadence, la distance, l'état zone/calibration et les 4 commandes envoyées à Unity.
+
+```bash
+./run_bridge.sh --preview                     # fenêtre plein format
+./run_bridge.sh --preview --preview-scale 0.5 # demi-taille, pour laisser la place au jeu
+```
+
+Touches dans la fenêtre : `q` / `Échap` arrêtent le bridge, `f` bascule entre l'image brute de
+la caméra et l'image réellement envoyée à MediaPipe (utile pour régler `--bg-max-distance`).
+
+Prérequis : un OpenCV **avec** HighGUI, absent du wheel `opencv-python-headless` installé par
+défaut. Il est déclaré dans l'extra `preview` :
+
+```bash
+uv sync --extra preview
+```
+
+Option de debug/réglage : `imshow` coûte quelques millisecondes par frame et la fenêtre
+s'affiche par-dessus le jeu — à ne pas activer pendant une JPO.
 
 ### Validation matériel
 

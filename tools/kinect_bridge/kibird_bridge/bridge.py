@@ -143,6 +143,14 @@ def run_live(args: argparse.Namespace) -> None:
     from .pose import PoseEstimator
     from .segmentation import remove_background
 
+    preview = None
+    if args.preview:
+        # Import differe comme le reste : --preview a besoin d'un OpenCV avec HighGUI, dont
+        # le mode nominal (sans preview) ne doit pas dependre.
+        from .preview import PreviewClosed, PreviewWindow
+
+        preview = PreviewWindow(scale=args.preview_scale)
+
     print(f"Chargement du modele {args.model} ...")
     pose_estimator = PoseEstimator(args.model, num_poses=args.num_poses)
     capture = KinectCapture()
@@ -189,8 +197,11 @@ def run_live(args: argparse.Namespace) -> None:
         raise init_error
     print("Flux video OK.")
 
+    if preview is not None:
+        print("[PREVIEW] Fenetre de debug active (q/Echap pour quitter, f pour basculer brut/filtre).")
     print(f"Emission UDP vers {args.host}:{args.port} @ ~{TARGET_HZ:.0f}Hz. Ctrl+C pour arreter.")
     frames_since_status = 0
+    hz_ema = 0.0
     last_status_t = time.time()
     try:
         while True:
@@ -244,6 +255,25 @@ def run_live(args: argparse.Namespace) -> None:
             sock.sendto(protocol.pack(packet), (args.host, args.port))
             seq += 1
 
+            # Cadence instantanee lissee : la ligne de statut ne la calcule que toutes les
+            # 2s, trop lent pour une fenetre rafraichie a chaque frame.
+            hz_ema = 1.0 / dt if hz_ema == 0.0 else 0.9 * hz_ema + 0.1 / dt
+
+            if preview is not None:
+                try:
+                    preview.show(
+                        frame.rgb, rgb_for_pose, skeletons, candidate,
+                        distance=distance,
+                        in_zone=tracking_result.in_zone,
+                        player_present=tracking_result.player_present,
+                        calibrated=gesture_state.neutral_distance_m is not None,
+                        gesture_out=gesture_out,
+                        hz=hz_ema,
+                    )
+                except PreviewClosed:
+                    print("\n[PREVIEW] Fenetre fermee, arret du bridge.")
+                    break
+
             # Sans cette ligne de statut, un blocage de la capture est indiscernable d'un
             # fonctionnement normal : la console reste muette dans les deux cas.
             frames_since_status += 1
@@ -267,6 +297,8 @@ def run_live(args: argparse.Namespace) -> None:
         sock.close()
         capture.close()
         pose_estimator.close()
+        if preview is not None:
+            preview.close()
 
 
 def main() -> None:
@@ -281,10 +313,15 @@ def main() -> None:
     parser.add_argument("--bg-filter", action=argparse.BooleanOptionalAction, default=True,
                         help="Masque le fond au-dela de --bg-max-distance avec la profondeur IR "
                              "avant d'envoyer l'image a MediaPipe")
-    parser.add_argument("--bg-max-distance", type=float, default=4.0,
+    parser.add_argument("--bg-max-distance", type=float, default=2.0,
                         help="Distance (m) au-dela de laquelle les pixels sont noircis")
+    parser.add_argument("--preview", action="store_true",
+                        help="Ouvre une fenetre camera avec overlay du squelette MediaPipe et des "
+                             "commandes deduites (debug/reglage ; necessite opencv-python non-headless)")
+    parser.add_argument("--preview-scale", type=float, default=1.0,
+                        help="Facteur d'echelle de la fenetre --preview (ex. 0.5 pour une demi-taille)")
     parser.add_argument("--min-distance", type=float, default=1.0)
-    parser.add_argument("--max-distance", type=float, default=4.0)
+    parser.add_argument("--max-distance", type=float, default=2.0)
     args = parser.parse_args()
 
     from .capture import KinectUnavailableError
