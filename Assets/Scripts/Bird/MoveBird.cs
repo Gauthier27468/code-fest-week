@@ -110,6 +110,20 @@ public class MoveBird : MonoBehaviour
     {
         bonusScore += points;
         CurrentScore += points;
+        KiBird.MainMenu.ScoreManager.UpdateSessionBest(CurrentScore);
+    }
+
+    /// <summary>Table des scores 0..1999 sous forme de string, construite une seule fois.</summary>
+    private static readonly string[] ScoreStringCache = BuildScoreStringCache();
+
+    private static string[] BuildScoreStringCache()
+    {
+        var cache = new string[2000];
+        for (int i = 0; i < cache.Length; i++)
+        {
+            cache[i] = i.ToString();
+        }
+        return cache;
     }
 
     private static readonly int FlyingHash = Animator.StringToHash("Flying");
@@ -130,6 +144,7 @@ public class MoveBird : MonoBehaviour
     private float deathTime = 0f;
     private Collider killedByCollider = null;
     private bool isGroundImpact = false;
+    private int displayedScore = -1;
 
     [Header("Effets Visuels & Mort")]
     [Tooltip("Préfab ou référence vers le système de particules de plumes (optionnel, auto-généré si vide).")]
@@ -176,9 +191,19 @@ public class MoveBird : MonoBehaviour
         }
         rb.isKinematic = false;
         rb.useGravity = false;
-        rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+        // ContinuousSpeculative plutôt que Continuous : tant que l'oiseau est vivant il est
+        // téléporté par transform.Translate() avec une vélocité remise à zéro, or la CCD balayée
+        // de PhysX se base sur la vélocité. Continuous ne détecterait donc rien tout en payant des
+        // sweeps contre les MeshColliders du décor. Les contacts spéculatifs, eux, fonctionnent
+        // sur un corps téléporté et coûtent une fraction du prix.
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
         rb.constraints = RigidbodyConstraints.FreezeRotation;
-        rb.interpolation = RigidbodyInterpolation.Interpolate;
+        // Interpolation désactivée tant que le Transform pilote l'oiseau : l'interpolation reprend
+        // la main sur le Transform à chaque frame de rendu et le replace sur la pose du dernier pas
+        // physique (50 Hz). Les déplacements écrits dans Update() entre deux pas sont alors écrasés,
+        // ce qui produit des retours en arrière visibles et une perte de vitesse d'autant plus forte
+        // que le framerate est élevé. Elle est réactivée dans Die(), où la physique pilote la chute.
+        rb.interpolation = RigidbodyInterpolation.None;
 
         if (gameObject.CompareTag("Untagged"))
         {
@@ -204,10 +229,8 @@ public class MoveBird : MonoBehaviour
         currentMinHeight = defaultMinHeight;
         UpdateAnimationSpeed();
 
-        if (scoreText != null)
-        {
-            scoreText.text = "0";
-        }
+        displayedScore = -1;
+        RefreshScoreLabel();
 
 
     }
@@ -218,8 +241,12 @@ public class MoveBird : MonoBehaviour
 
         SurvivalTime += Time.deltaTime;
         float dist = Mathf.Max(0f, transform.position.z - startZPos);
-        CurrentScore = Mathf.FloorToInt(dist * scorePerMeter) + bonusScore;
-        KiBird.MainMenu.ScoreManager.UpdateSessionBest(CurrentScore);
+        int newScore = Mathf.FloorToInt(dist * scorePerMeter) + bonusScore;
+        if (newScore != CurrentScore)
+        {
+            CurrentScore = newScore;
+            KiBird.MainMenu.ScoreManager.UpdateSessionBest(CurrentScore);
+        }
 
 #if ENABLE_INPUT_SYSTEM
         if (Keyboard.current != null && Keyboard.current.kKey.wasPressedThisFrame)
@@ -243,10 +270,46 @@ public class MoveBird : MonoBehaviour
         Bank(input);
         UpdateAnimation(input);
 
-        if (scoreText != null)
-        {
-            scoreText.text = CurrentScore.ToString();
-        }
+        RefreshScoreLabel();
+    }
+
+    /// <summary>
+    /// Neutralise la vélocité résiduelle du Rigidbody au rythme de la physique (50 Hz) et non à
+    /// chaque frame de rendu : tant que l'oiseau est vivant c'est le Transform qui le pilote,
+    /// PhysX ne doit rien ajouter par-dessus. Inutile après la mort ou la victoire, où le
+    /// Rigidbody reprend la main (chute libre) ou est figé.
+    /// </summary>
+    private void FixedUpdate()
+    {
+        if (rb == null || IsDead || IsWon) return;
+
+#if UNITY_6000_0_OR_NEWER
+        rb.linearVelocity = Vector3.zero;
+#else
+        rb.velocity = Vector3.zero;
+#endif
+        rb.angularVelocity = Vector3.zero;
+    }
+
+    /// <summary>
+    /// Réécrit le label de score uniquement quand la valeur entière change. Écrire dans un
+    /// UnityEngine.UI.Text à chaque frame alloue une string (GC) et marque le Canvas dirty, ce qui
+    /// force un rebuild uGUI complet à chaque image.
+    /// </summary>
+    private void RefreshScoreLabel()
+    {
+        if (scoreText == null || displayedScore == CurrentScore) return;
+
+        displayedScore = CurrentScore;
+        scoreText.text = GetScoreString(CurrentScore);
+    }
+
+    /// <summary>Strings de score pré-calculées pour éviter une allocation par changement de score.</summary>
+    private static string GetScoreString(int score)
+    {
+        if (score < 0 || score >= ScoreStringCache.Length) return score.ToString();
+
+        return ScoreStringCache[score];
     }
 
     /// <summary>
@@ -350,6 +413,9 @@ public class MoveBird : MonoBehaviour
             rb.isKinematic = false;
             rb.useGravity = true;
             rb.constraints = RigidbodyConstraints.None;
+            // À partir d'ici c'est la physique qui pilote le Transform : l'interpolation redevient
+            // utile (chute lissée entre les pas à 50 Hz) au lieu d'entrer en conflit avec le script.
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
 #if UNITY_6000_0_OR_NEWER
             rb.linearDamping = 0.5f;
             rb.angularDamping = 1.0f;
@@ -917,17 +983,6 @@ public class MoveBird : MonoBehaviour
             pos.x = Mathf.Clamp(pos.x, currentMinX, currentMaxX);
             pos.y = Mathf.Clamp(pos.y, currentMinHeight, currentMaxHeight);
             transform.position = pos;
-        }
-
-        if (rb != null)
-        {
-#if UNITY_6000_0_OR_NEWER
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-#else
-            rb.velocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-#endif
         }
     }
 
