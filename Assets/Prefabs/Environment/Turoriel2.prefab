@@ -979,7 +979,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7611272355028012850}
   m_LocalRotation: {x: -0.0000000018623201, y: -0.7072302, z: -0.7069834, w: -0.0000000018629702}
-  m_LocalPosition: {x: 0, y: 0, z: 0.01431}
+  m_LocalPosition: {x: 0, y: 0, z: 0.014}
   m_LocalScale: {x: 0.0012499994, y: 0.0012499997, z: 0.0012499997}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -987,8 +987,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: -90, y: 180, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -0.00166, y: -0.00168}
-  m_SizeDelta: {x: 10.3, y: 1.51}
+  m_AnchoredPosition: {x: -0.0005, y: -0.001}
+  m_SizeDelta: {x: 9, y: 1.51}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!23 &6902435839283015559
 MeshRenderer:
@@ -1059,7 +1059,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Bas des ailles pour monter !
+  m_text: Bas des ailes pour monter !
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 5302535af1044152a457ed104f1f4b91, type: 2}
   m_sharedMaterial: {fileID: 2164040, guid: 5302535af1044152a457ed104f1f4b91, type: 2}
