@@ -171,26 +171,6 @@ PrefabInstance:
       propertyPath: m_Name
       value: DinosaurusBlock
       objectReference: {fileID: 0}
-    - target: {fileID: 7302319747520972510, guid: 407b969ee77ef344895be69d60ac3273, type: 3}
-      propertyPath: m_IsActive
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 8784438756794009438, guid: 407b969ee77ef344895be69d60ac3273, type: 3}
-      propertyPath: m_LocalScale.x
-      value: 0.8
-      objectReference: {fileID: 0}
-    - target: {fileID: 8784438756794009438, guid: 407b969ee77ef344895be69d60ac3273, type: 3}
-      propertyPath: m_LocalScale.y
-      value: 0.8
-      objectReference: {fileID: 0}
-    - target: {fileID: 8784438756794009438, guid: 407b969ee77ef344895be69d60ac3273, type: 3}
-      propertyPath: m_LocalScale.z
-      value: 0.8
-      objectReference: {fileID: 0}
-    - target: {fileID: 8784438756794009438, guid: 407b969ee77ef344895be69d60ac3273, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 7.39
-      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -994,6 +974,34 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &542376620 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 6468323970799238415, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+  m_PrefabInstance: {fileID: 8879296095756065025}
+  m_PrefabAsset: {fileID: 0}
+--- !u!136 &542376622
+CapsuleCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 542376620}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Radius: 0.002
+  m_Height: 0.05
+  m_Direction: 0
+  m_Center: {x: -0.01, y: 0.003, z: 0.001}
 --- !u!1 &602988944
 GameObject:
   m_ObjectHideFlags: 0
@@ -2168,7 +2176,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &1392071820
 RectTransform:
   m_ObjectHideFlags: 0
@@ -3672,6 +3680,34 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2032602920}
   m_CullTransparentMesh: 1
+--- !u!1 &2137034874 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 6137897659549537966, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+  m_PrefabInstance: {fileID: 8879296095756065025}
+  m_PrefabAsset: {fileID: 0}
+--- !u!136 &2137034876
+CapsuleCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2137034874}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Radius: 0.002
+  m_Height: 0.05
+  m_Direction: 0
+  m_Center: {x: -0.01, y: 0.003, z: 0.001}
 --- !u!1001 &1047585162328751570
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -3723,6 +3759,10 @@ PrefabInstance:
     - target: {fileID: 7558982517859427766, guid: 76b52f0498e51904e806d53792936f5a, type: 3}
       propertyPath: m_Name
       value: BallonsBlock
+      objectReference: {fileID: 0}
+    - target: {fileID: 7558982517859427766, guid: 76b52f0498e51904e806d53792936f5a, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -3879,6 +3919,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 956003524011680185, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+      propertyPath: m_Enabled
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 2362153942084297668, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: m_Name
       value: Bird
@@ -3943,10 +3987,24 @@ PrefabInstance:
       propertyPath: scoreText
       value: 
       objectReference: {fileID: 1469463866}
+    - target: {fileID: 5639783668897378715, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+      propertyPath: defaultMaxX
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 5639783668897378715, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+      propertyPath: defaultMinX
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 6137897659549537966, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2137034876}
+    - targetCorrespondingSourceObject: {fileID: 6468323970799238415, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 542376622}
   m_SourcePrefab: {fileID: 100100000, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
