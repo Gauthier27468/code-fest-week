@@ -20,6 +20,13 @@ public class MoveBird : MonoBehaviour
     public float pitchAngle = 15f;
     public float rotationSpeed = 5f;
 
+    [Header("Camera Stabilization")]
+    [Tooltip("Référence vers la caméra (auto-détectée dans les enfants si laissée vide).")]
+    public Camera birdCamera;
+
+    [Tooltip("Garde la caméra toujours horizontale et stable : elle ne s'incline pas quand l'oiseau vire ou tangue.")]
+    public bool keepCameraHorizontal = true;
+
     [Header("Kinect")]
     [Tooltip("Laisser vide : l'écouteur Kinect est trouvé tout seul au démarrage. " +
              "Sans joueur détecté (bridge coupé, personne dans la zone), le clavier reprend la main.")]
@@ -49,6 +56,9 @@ public class MoveBird : MonoBehaviour
 
     [Tooltip("Seuil de montée pour déclencher l'animation de vol battu (montée).")]
     public float climbAnimationThreshold = 0.05f;
+
+    [Tooltip("Seuil de descente pour déclencher l'animation de piqué/plongeon (dive).")]
+    public float diveAnimationThreshold = -0.25f;
 
     [Header("Boundary Clamping (Montagnes & Altitude)")]
     [Tooltip("Active le confinement de l'oiseau dans les limites latérales des montagnes et d'altitude.")]
@@ -127,8 +137,15 @@ public class MoveBird : MonoBehaviour
     }
 
     private static readonly int FlyingHash = Animator.StringToHash("Flying");
+    private static readonly int DiveHash = Animator.StringToHash("Dive");
+    private static readonly int LowerDiveHash = Animator.StringToHash("dive");
+
+    private int resolvedDiveHash = DiveHash;
+    private bool hasDiveParameter = false;
 
     private Quaternion initialRotation;
+    private Quaternion initialCameraWorldRotation;
+    private Vector3 cameraWorldOffset;
     private float currentRoll = 0f;
     private float currentPitch = 0f;
     private float keyboardFlapTimer = 0f;
@@ -220,9 +237,35 @@ public class MoveBird : MonoBehaviour
         }
         if (animator != null)
         {
+            if (HasParameter(animator, DiveHash))
+            {
+                resolvedDiveHash = DiveHash;
+                hasDiveParameter = true;
+            }
+            else if (HasParameter(animator, LowerDiveHash))
+            {
+                resolvedDiveHash = LowerDiveHash;
+                hasDiveParameter = true;
+            }
+
             animator.SetBool(FlyingHash, false);
+            if (hasDiveParameter)
+            {
+                animator.SetBool(resolvedDiveHash, false);
+            }
         }
         initialRotation = transform.localRotation;
+
+        if (birdCamera == null)
+        {
+            birdCamera = GetComponentInChildren<Camera>();
+        }
+        if (birdCamera != null)
+        {
+            initialCameraWorldRotation = birdCamera.transform.rotation;
+            cameraWorldOffset = birdCamera.transform.position - transform.position;
+        }
+
         currentMinX = defaultMinX;
         currentMaxX = defaultMaxX;
         currentMaxHeight = defaultMaxHeight;
@@ -292,6 +335,22 @@ public class MoveBird : MonoBehaviour
     }
 
     /// <summary>
+    /// Maintient la caméra parfaitement horizontale et alignée derrière l'oiseau.
+    /// Exécuté après tous les Update (mouvements et inclinaisons de l'oiseau) pour
+    /// neutraliser le roulis (roll/bank) et le tangage (pitch) qui feraient pencher l'horizon.
+    /// </summary>
+    private void LateUpdate()
+    {
+        if (birdCamera == null || IsDead) return;
+
+        if (keepCameraHorizontal)
+        {
+            birdCamera.transform.rotation = initialCameraWorldRotation;
+            birdCamera.transform.position = transform.position + cameraWorldOffset;
+        }
+    }
+
+    /// <summary>
     /// Réécrit le label de score uniquement quand la valeur entière change. Écrire dans un
     /// UnityEngine.UI.Text à chaque frame alloue une string (GC) et marque le Canvas dirty, ce qui
     /// force un rebuild uGUI complet à chaque image.
@@ -347,6 +406,10 @@ public class MoveBird : MonoBehaviour
         if (animator != null)
         {
             animator.SetBool(FlyingHash, false);
+            if (hasDiveParameter)
+            {
+                animator.SetBool(resolvedDiveHash, false);
+            }
         }
 
         if (finishBonus > 0)
@@ -395,6 +458,10 @@ public class MoveBird : MonoBehaviour
         if (animator != null)
         {
             animator.SetBool(FlyingHash, false);
+            if (hasDiveParameter)
+            {
+                animator.SetBool(resolvedDiveHash, false);
+            }
             animator.enabled = false;
         }
 
@@ -483,7 +550,7 @@ public class MoveBird : MonoBehaviour
         OnBirdDied?.Invoke();
 
         // Détacher la caméra pour qu'elle suive la chute de manière stable sans vriller avec la carcasse
-        Camera mainCam = GetComponentInChildren<Camera>();
+        Camera mainCam = birdCamera != null ? birdCamera : GetComponentInChildren<Camera>();
         if (mainCam != null)
         {
             mainCam.transform.SetParent(null, true);
@@ -1004,14 +1071,20 @@ public class MoveBird : MonoBehaviour
         if (animator == null) return;
 
         // Logique demandée :
-        // - En mode planage ou en chute -> Flying = false (joue l'animation idle/planage)
+        // - En piqué / plongeon -> Dive = true, Flying = false (joue l'animation dive)
+        // - En mode planage ou neutre -> Flying = false, Dive = false (joue l'animation idle/planage)
         // - Si l'oiseau tourne OU remonte vers le haut -> Flying = true (joue l'animation Flying/battement)
         // - Si le plafond d'altitude est atteint (planage forcé) -> Flying = false garanti
+        bool isDiving = input.y < diveAnimationThreshold;
         bool isTurning = Mathf.Abs(input.x) > turnAnimationThreshold;
         bool isClimbing = input.y > climbAnimationThreshold;
-        bool isFlying = (isTurning || isClimbing) && ceilingLockoutTimer <= 0f;
+        bool isFlying = !isDiving && (isTurning || isClimbing) && ceilingLockoutTimer <= 0f;
 
         animator.SetBool(FlyingHash, isFlying);
+        if (hasDiveParameter)
+        {
+            animator.SetBool(resolvedDiveHash, isDiving);
+        }
 
         if (syncAnimationWithSpeed && forwardSpeed > 0.01f)
         {
@@ -1022,6 +1095,17 @@ public class MoveBird : MonoBehaviour
         {
             animator.speed = animationSpeed;
         }
+    }
+
+    private static bool HasParameter(Animator anim, int paramHash)
+    {
+        if (anim == null) return false;
+        var parameters = anim.parameters;
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            if (parameters[i].nameHash == paramHash) return true;
+        }
+        return false;
     }
 
     public void SetForwardSpeed(float newSpeed)
