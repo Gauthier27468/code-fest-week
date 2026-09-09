@@ -31,6 +31,9 @@ public class MapGenerator : MonoBehaviour
     [Tooltip("Blocs d'obstacles tirés au sort entre les tutos et la fin.")]
     public List<GameObject> randomBlockPrefabs = new List<GameObject>();
 
+    [Tooltip("Tirage sans remise : un même bloc ne réapparaît qu'une fois le pool épuisé.")]
+    public bool noDuplicates = true;
+
     [Header("Streaming & Nettoyage")]
     [Tooltip("Nombre de blocs gardés instanciés d'avance devant l'oiseau.")]
     [Range(2, 10)]
@@ -130,6 +133,12 @@ public class MapGenerator : MonoBehaviour
         slots = new BlockSlot[count];
         lastRandomPicked = null;
 
+        List<GameObject> availablePool = null;
+        if (noDuplicates)
+        {
+            availablePool = GetUniquePrefabsPool();
+        }
+
         for (int i = 0; i < count; i++)
         {
             GameObject chosenPrefab;
@@ -140,7 +149,7 @@ public class MapGenerator : MonoBehaviour
             else if (i == count - 1) chosenPrefab = endingPrefab;
             else
             {
-                chosenPrefab = PickRandomBlock();
+                chosenPrefab = PickRandomBlock(ref availablePool);
                 lastRandomPicked = chosenPrefab;
             }
 
@@ -155,21 +164,72 @@ public class MapGenerator : MonoBehaviour
         }
     }
 
-    /// <summary>Tire un bloc au sort en évitant de répéter le précédent.</summary>
-    private GameObject PickRandomBlock()
+    /// <summary>Liste des préfabs uniques et valides configurés dans randomBlockPrefabs.</summary>
+    private List<GameObject> GetUniquePrefabsPool()
+    {
+        var pool = new List<GameObject>();
+        if (randomBlockPrefabs == null) return pool;
+
+        var seen = new HashSet<GameObject>();
+        foreach (var prefab in randomBlockPrefabs)
+        {
+            if (prefab != null && seen.Add(prefab)) pool.Add(prefab);
+        }
+
+        return pool;
+    }
+
+    /// <summary>
+    /// Tire un bloc au sort en évitant de répéter le précédent.
+    /// Si noDuplicates, le tirage se fait sans remise dans availablePool (rechargé une fois épuisé).
+    /// </summary>
+    private GameObject PickRandomBlock(ref List<GameObject> availablePool)
     {
         if (randomBlockPrefabs == null || randomBlockPrefabs.Count == 0) return null;
         if (randomBlockPrefabs.Count == 1) return randomBlockPrefabs[0];
 
-        GameObject picked = null;
+        if (noDuplicates)
+        {
+            if (availablePool == null || availablePool.Count == 0)
+            {
+                availablePool = GetUniquePrefabsPool();
+                if (availablePool.Count == 0) return null;
+            }
+
+            int selectedIndex = -1;
+
+            // Plusieurs choix restants : on évite de reprendre le bloc précédent.
+            if (availablePool.Count > 1 && lastRandomPicked != null)
+            {
+                var validIndices = new List<int>();
+                for (int i = 0; i < availablePool.Count; i++)
+                {
+                    if (availablePool[i] != lastRandomPicked) validIndices.Add(i);
+                }
+
+                if (validIndices.Count > 0)
+                {
+                    selectedIndex = validIndices[Random.Range(0, validIndices.Count)];
+                }
+            }
+
+            if (selectedIndex < 0) selectedIndex = Random.Range(0, availablePool.Count);
+
+            GameObject picked = availablePool[selectedIndex];
+            availablePool.RemoveAt(selectedIndex);
+            return picked;
+        }
+
+        // Tirage avec remise : on retente simplement tant qu'on retombe sur le bloc précédent.
+        GameObject pickedStandard = null;
         int attempts = 10;
         while (attempts-- > 0)
         {
-            picked = randomBlockPrefabs[Random.Range(0, randomBlockPrefabs.Count)];
-            if (picked != lastRandomPicked) break;
+            pickedStandard = randomBlockPrefabs[Random.Range(0, randomBlockPrefabs.Count)];
+            if (pickedStandard != lastRandomPicked) break;
         }
 
-        return picked != null ? picked : randomBlockPrefabs[0];
+        return pickedStandard != null ? pickedStandard : randomBlockPrefabs[0];
     }
 
     private void UpdateStreaming(float birdZ)
