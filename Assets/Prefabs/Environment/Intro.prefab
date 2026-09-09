@@ -148,7 +148,7 @@ MonoBehaviour:
   minHeight: 1.5
   startZ: -50
   endZ: 0
-  blockLength: 50
+  blockLength: 48
   autoZRange: 1
   wallInnerMargin: 6
 --- !u!1 &3470705516998378293

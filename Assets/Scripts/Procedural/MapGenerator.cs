@@ -353,6 +353,7 @@ public class MapGenerator : MonoBehaviour
         string[] randomNames =
         {
             "ArchesBlock.prefab",
+            "BattleBusBlock.prefab",
             "FallenRockBlock.prefab",
             "HouseBlock.prefab",
             "PlaneBlock.prefab",

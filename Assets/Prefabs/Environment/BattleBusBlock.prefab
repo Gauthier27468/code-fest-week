@@ -101,6 +101,7 @@ GameObject:
   - component: {fileID: 7760509571996421066}
   - component: {fileID: 9135120495699445215}
   - component: {fileID: 2536494394348284993}
+  - component: {fileID: 2536494394348284994}
   m_Layer: 0
   m_Name: BattleBusBlock
   m_TagString: Untagged
@@ -165,6 +166,27 @@ MonoBehaviour:
   targetTag: Player
   triggerOnce: 1
   disableAtStart: 1
+--- !u!114 &2536494394348284994
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2070279880498992626}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b10cb004d5c54e2fa7b89210eb7041a9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BlockBounds
+  minX: -5.5
+  maxX: 13.5
+  maxHeight: 12
+  minHeight: 1.5
+  startZ: 48
+  endZ: 96
+  blockLength: 48
+  autoZRange: 1
+  wallInnerMargin: 6
 --- !u!1 &3700390534226955264
 GameObject:
   m_ObjectHideFlags: 0
