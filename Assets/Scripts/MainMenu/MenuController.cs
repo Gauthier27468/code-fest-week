@@ -26,12 +26,20 @@ namespace KiBird.MainMenu
         [SerializeField] private Text scoreTitleText;
         [SerializeField] private Text leaderboardText;
         [SerializeField] private Text promptText;
+        [SerializeField] private Text countdownText;
+        [SerializeField] private Text trackingStatusText;
+        [SerializeField] private Image trackingStatusDot;
 
         [Header("Démarrage")]
         [SerializeField] private Image startProgressFill;
         [SerializeField] private float holdDurationToStart = 3f;
         [SerializeField] private GameObject menuVisualRoot;
         [SerializeField] private GameObject menuGameRoot;
+
+        [Header("Couleurs de synchronisation")]
+        [SerializeField] private Color waitingColor = new Color(0.76f, 0.68f, 0.48f);
+        [SerializeField] private Color detectedColor = new Color(0.62f, 0.84f, 0.46f);
+        [SerializeField] private Color chargingColor = new Color(1f, 0.73f, 0.16f);
 
         private string InstructionMessage;
 
@@ -54,6 +62,13 @@ namespace KiBird.MainMenu
             if (gameRoot != null) menuGameRoot = gameRoot;
         }
 
+        public void ConfigurePresentation(Text countdown, Text trackingStatus, Image trackingDot)
+        {
+            countdownText = countdown;
+            trackingStatusText = trackingStatus;
+            trackingStatusDot = trackingDot;
+        }
+
         public void Configure(DemoKeyboardInput input, KinectStartInputSource kinectInput,
             SilhouetteRig silhouette, Text lastScore, Text leaderboard, Text prompt, Image progressFill,
             GameObject visualRoot)
@@ -67,7 +82,7 @@ namespace KiBird.MainMenu
             RefreshScores();
             // Le personnage central est un badge décoratif : il reste toujours en pose T
             // (bras à l'horizontale), seul l'anneau de progression réagit à la pose tenue.
-            playerSilhouette.SetPoseInstant(BirdPose.Glide);
+            if (playerSilhouette != null) playerSilhouette.SetPoseInstant(BirdPose.Glide);
 
             // Le jeu tourne déjà (blocs, hoops, environnement...) mais l'oiseau reste immobile
             // tant que le menu n'a pas laissé la main.
@@ -88,7 +103,7 @@ namespace KiBird.MainMenu
             if (menuVisualRoot != null) menuVisualRoot.SetActive(true);
             if (menuGameRoot != null) menuGameRoot.SetActive(false);
 
-            InstructionMessage = promptText.text;
+            InstructionMessage = promptText != null ? promptText.text : string.Empty;
         }
 
         private void Update()
@@ -102,27 +117,61 @@ namespace KiBird.MainMenu
             bool kinectCharging = kinectInputProvider != null && kinectInputProvider.IsPlayerPresent &&
                                    kinectInputProvider.CurrentPose == BirdPose.Glide;
             bool charging = keyboardCharging || kinectCharging;
+            bool playerPresent = (inputProvider != null && inputProvider.IsPlayerPresent) ||
+                                 (kinectInputProvider != null && kinectInputProvider.IsPlayerPresent);
 
             UpdateStartProgress(charging);
             UpdatePrompt(charging);
+            UpdateTrackingStatus(playerPresent, charging);
         }
 
         // Tant que le joueur ne tend pas les bras : instruction fixe.
         // Dès qu'il tend les bras (pose T) : décompte "3...", "2...", "1..." jusqu'au lancement.
         private void UpdatePrompt(bool charging)
         {
-            if (promptText == null) return;
+            Text dynamicText = countdownText != null ? countdownText : promptText;
+            if (dynamicText == null) return;
 
             if (charging)
             {
                 int remaining = Mathf.Clamp(Mathf.CeilToInt(holdDurationToStart - holdTimer), 1,
                     Mathf.CeilToInt(holdDurationToStart));
-                promptText.text = remaining + "...";
+                dynamicText.text = remaining.ToString();
             }
             else
             {
-                promptText.text = InstructionMessage;
+                dynamicText.text = countdownText != null ? string.Empty : InstructionMessage;
             }
+        }
+
+        private void UpdateTrackingStatus(bool playerPresent, bool charging)
+        {
+            if (trackingStatusText == null && trackingStatusDot == null) return;
+
+            string message;
+            Color color;
+            if (charging)
+            {
+                message = "GARDEZ LA POSE";
+                color = chargingColor;
+            }
+            else if (playerPresent)
+            {
+                message = "JOUEUR DÉTECTÉ";
+                color = detectedColor;
+            }
+            else
+            {
+                message = "EN ATTENTE D'UN JOUEUR";
+                color = waitingColor;
+            }
+
+            if (trackingStatusText != null)
+            {
+                trackingStatusText.text = message;
+                trackingStatusText.color = color;
+            }
+            if (trackingStatusDot != null) trackingStatusDot.color = color;
         }
 
         private void UpdateStartProgress(bool charging)
@@ -148,7 +197,7 @@ namespace KiBird.MainMenu
             if (menuGameRoot != null) menuGameRoot.SetActive(true);
 
             // Start bird music !
-            birdMovement.PlayMainMusic();
+            if (birdMovement != null) birdMovement.PlayMainMusic();
         }
 
         private void RefreshScores()

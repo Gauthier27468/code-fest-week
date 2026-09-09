@@ -670,6 +670,7 @@ public class MoveBird : MonoBehaviour
         fxObj.transform.rotation = Quaternion.identity;
 
         ParticleSystem ps = fxObj.AddComponent<ParticleSystem>();
+        ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         ParticleSystemRenderer psr = fxObj.GetComponent<ParticleSystemRenderer>();
 
         Material featherMat = null;

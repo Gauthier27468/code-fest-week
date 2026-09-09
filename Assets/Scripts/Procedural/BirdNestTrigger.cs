@@ -71,6 +71,7 @@ public class BirdNestTrigger : MonoBehaviour
         fx.transform.position = transform.position + Vector3.up * 0.5f;
 
         ParticleSystem ps = fx.AddComponent<ParticleSystem>();
+        ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         ParticleSystemRenderer psr = fx.GetComponent<ParticleSystemRenderer>();
 
         Shader pShader = Shader.Find("Universal Render Pipeline/Particles/Unlit") 

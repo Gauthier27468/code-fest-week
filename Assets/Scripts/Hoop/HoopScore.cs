@@ -4,7 +4,7 @@ using UnityEngine;
 /// <summary>
 /// Gère le franchissement des anneaux (cerceaux) par le joueur.
 /// - Attribue 100 points bonus au score du joueur.
-/// - Fournit un feedback visuel immédiat (éclats de particules dorées, rétractation).
+/// - Fournit un feedback visuel immédiat (explosion festive de confettis multicolores, rétraction).
 /// - Empêche le multi-déclenchement et le passage à travers sans détection (anti-tunneling).
 /// </summary>
 public class HoopScore : MonoBehaviour
@@ -71,58 +71,174 @@ public class HoopScore : MonoBehaviour
             AudioSource.PlayClipAtPoint(collectSound, soundPos, soundVolume);
         }
 
-        // Effet visuel de collecte
+        // Effet visuel de collecte (confettis multicolores festifs)
         if (collectEffectPrefab != null)
         {
             Instantiate(collectEffectPrefab, transform.position, Quaternion.identity);
         }
         else
         {
-            SpawnCollectSparkles();
+            SpawnCollectConfetti();
         }
 
         // Animation de disparition fluide
         StartCoroutine(AnimateCollectionAndDestroy());
     }
 
-    private void SpawnCollectSparkles()
+    /// <summary>
+    /// Génère une explosion festive de confettis de toutes les couleurs lors du franchissement du cerceau.
+    /// </summary>
+    private void SpawnCollectConfetti()
     {
-        GameObject fxObj = new GameObject("HoopCollectFX");
+        GameObject fxObj = new GameObject("HoopConfettiFX");
         fxObj.transform.position = transform.position;
 
         ParticleSystem ps = fxObj.AddComponent<ParticleSystem>();
+        ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         ParticleSystemRenderer psr = fxObj.GetComponent<ParticleSystemRenderer>();
 
-        Shader pShader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
-                      ?? Shader.Find("Particles/Standard Unlit")
-                      ?? Shader.Find("Sprites/Default");
-        if (pShader != null)
+        // Matériau pour les confettis (avec texture rounded_rect et shader unlit double-face)
+        Material confettiMat = null;
+#if UNITY_EDITOR
+        confettiMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Generated/M_Confetti.mat");
+#endif
+        if (confettiMat == null)
         {
-            psr.material = new Material(pShader);
+            Shader pShader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
+                          ?? Shader.Find("Particles/Standard Unlit")
+                          ?? Shader.Find("Sprites/Default");
+            if (pShader != null)
+            {
+                confettiMat = new Material(pShader);
+                confettiMat.SetInt("_Cull", 0); // Visible des deux côtés lors des cabrioles 3D
+            }
+        }
+        if (confettiMat != null)
+        {
+            psr.material = confettiMat;
         }
 
+        psr.renderMode = ParticleSystemRenderMode.Billboard;
+        psr.sortMode = ParticleSystemSortMode.Distance;
+
+        // Palette arc-en-ciel complète pour un effet "toutes les couleurs" (Rouge, Orange, Jaune, Vert, Cyan, Bleu, Magenta)
+        Gradient rainbowGrad = new Gradient();
+        rainbowGrad.SetKeys(
+            new GradientColorKey[] {
+                new GradientColorKey(new Color(1.0f, 0.15f, 0.22f), 0.00f), // Rouge vif
+                new GradientColorKey(new Color(1.0f, 0.52f, 0.05f), 0.16f), // Orange éclatant
+                new GradientColorKey(new Color(1.0f, 0.88f, 0.10f), 0.33f), // Jaune / Or
+                new GradientColorKey(new Color(0.12f, 0.92f, 0.36f), 0.50f), // Vert émeraude
+                new GradientColorKey(new Color(0.05f, 0.82f, 1.00f), 0.67f), // Cyan vibrant
+                new GradientColorKey(new Color(0.28f, 0.45f, 1.00f), 0.83f), // Bleu royal
+                new GradientColorKey(new Color(0.96f, 0.18f, 0.82f), 1.00f)  // Rose magenta
+            },
+            new GradientAlphaKey[] {
+                new GradientAlphaKey(1.0f, 0.0f),
+                new GradientAlphaKey(1.0f, 1.0f)
+            }
+        );
+
+        // Paramètres principaux du ParticleSystem
         var main = ps.main;
-        main.duration = 0.4f;
+        main.duration = 0.5f;
         main.loop = false;
-        main.startLifetime = new ParticleSystem.MinMaxCurve(0.4f, 0.7f);
-        main.startSpeed = new ParticleSystem.MinMaxCurve(3f, 6.5f);
-        main.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.3f);
-        main.startColor = new Color(1f, 0.85f, 0.2f, 1f); // Éclats dorés
+        main.startLifetime = new ParticleSystem.MinMaxCurve(1.2f, 1.8f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(4.5f, 9.0f);
+
+        // Forme rectangulaire caractéristique des lamelles de confettis
+        main.startSize3D = true;
+        main.startSizeX = new ParticleSystem.MinMaxCurve(0.12f, 0.24f);
+        main.startSizeY = new ParticleSystem.MinMaxCurve(0.24f, 0.50f);
+        main.startSizeZ = new ParticleSystem.MinMaxCurve(1.0f, 1.0f);
+
+        // Orientation 3D initiale aléatoire
+        main.startRotation3D = true;
+        main.startRotationX = new ParticleSystem.MinMaxCurve(0f, 360f * Mathf.Deg2Rad);
+        main.startRotationY = new ParticleSystem.MinMaxCurve(0f, 360f * Mathf.Deg2Rad);
+        main.startRotationZ = new ParticleSystem.MinMaxCurve(0f, 360f * Mathf.Deg2Rad);
+
+        // Sélection aléatoire d'une couleur dans la palette pour chaque confetto
+        var minMaxGrad = new ParticleSystem.MinMaxGradient(rainbowGrad);
+        minMaxGrad.mode = ParticleSystemGradientMode.RandomColor;
+        main.startColor = minMaxGrad;
+
+        // Gravité douce pour faire flotter et retomber les confettis
+        main.gravityModifier = 0.35f;
         main.simulationSpace = ParticleSystemSimulationSpace.World;
         main.stopAction = ParticleSystemStopAction.Destroy;
 
+        // Salve explosive festive (65 à 95 confettis)
         var emission = ps.emission;
         emission.rateOverTime = 0;
         emission.SetBursts(new ParticleSystem.Burst[] {
-            new ParticleSystem.Burst(0.0f, (short)20, (short)35)
+            new ParticleSystem.Burst(0.0f, (short)65, (short)95)
         });
 
+        // Zone d'explosion sphérique autour de l'anneau
         var shape = ps.shape;
         shape.shapeType = ParticleSystemShapeType.Sphere;
-        shape.radius = 0.7f;
+        shape.radius = 0.8f;
+
+        // Décélération aérodynamique (l'explosion ralentit vite pour laisser planer les confettis)
+        var limitVelocity = ps.limitVelocityOverLifetime;
+        limitVelocity.enabled = true;
+        limitVelocity.limit = new ParticleSystem.MinMaxCurve(1.0f, 2.2f);
+        limitVelocity.dampen = 0.32f;
+
+        // Rotation & vrille 3D continue dans l'air
+        var rot = ps.rotationOverLifetime;
+        rot.enabled = true;
+        rot.separateAxes = true;
+        rot.x = new ParticleSystem.MinMaxCurve(-360f * Mathf.Deg2Rad, 360f * Mathf.Deg2Rad);
+        rot.y = new ParticleSystem.MinMaxCurve(-360f * Mathf.Deg2Rad, 360f * Mathf.Deg2Rad);
+        rot.z = new ParticleSystem.MinMaxCurve(-240f * Mathf.Deg2Rad, 240f * Mathf.Deg2Rad);
+
+        // Turbulence d'air / flottement ondulé
+        var noise = ps.noise;
+        noise.enabled = true;
+        noise.strength = new ParticleSystem.MinMaxCurve(0.4f, 0.8f);
+        noise.frequency = 0.45f;
+        noise.scrollSpeed = 0.3f;
+        noise.damping = true;
+
+        // Fondu transparent fluide en fin de parcours
+        var col = ps.colorOverLifetime;
+        col.enabled = true;
+        Gradient fadeGrad = new Gradient();
+        fadeGrad.SetKeys(
+            new GradientColorKey[] {
+                new GradientColorKey(Color.white, 0.0f),
+                new GradientColorKey(Color.white, 1.0f)
+            },
+            new GradientAlphaKey[] {
+                new GradientAlphaKey(1.0f, 0.0f),
+                new GradientAlphaKey(1.0f, 0.70f),
+                new GradientAlphaKey(0.0f, 1.0f)
+            }
+        );
+        col.color = fadeGrad;
+
+        // Rétrécissement progressif en fin de vie
+        var sol = ps.sizeOverLifetime;
+        sol.enabled = true;
+        AnimationCurve sizeCurve = new AnimationCurve();
+        sizeCurve.AddKey(0.0f, 0.85f);
+        sizeCurve.AddKey(0.12f, 1.0f);
+        sizeCurve.AddKey(0.75f, 1.0f);
+        sizeCurve.AddKey(1.0f, 0.15f);
+        sol.size = new ParticleSystem.MinMaxCurve(1.0f, sizeCurve);
 
         ps.Play();
-        Destroy(fxObj, 1.0f);
+        Destroy(fxObj, 2.5f);
+    }
+
+    /// <summary>
+    /// Rétrocompatibilité avec l'ancien nom de méthode.
+    /// </summary>
+    private void SpawnCollectSparkles()
+    {
+        SpawnCollectConfetti();
     }
 
     private IEnumerator AnimateCollectionAndDestroy()
