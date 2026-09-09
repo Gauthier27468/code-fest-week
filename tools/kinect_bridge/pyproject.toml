@@ -1,0 +1,38 @@
+[project]
+name = "kibird-bridge"
+version = "0.1.0"
+description = "Bridge Kinect -> Unity pour KiBird : capture, pose, gestes, UDP."
+requires-python = ">=3.12"
+
+dependencies = [
+    # ⚠️ NE PAS passer à mediapipe 1.0.x : sa nouvelle architecture (libmediapipe.so chargée via
+    # ctypes) provoque un SIGKILL du process entier dans ses constructeurs statiques sur cette
+    # machine (Arch, Ryzen 7 7840HS). 0.10.35 (architecture pybind11) fonctionne parfaitement,
+    # sur Python 3.12 comme 3.14. Voir README.md, section "Blocage mediapipe 1.0.1 (résolu)".
+    "mediapipe==0.10.35",
+    "numpy>=2.0",
+    "opencv-python-headless>=4.9",
+    # Bindings Cython de libfreenect. Compilés depuis les sources au `uv sync` : cela demande un
+    # compilateur C et les headers système (/usr/include/libfreenect/, paquet `libfreenect` sur
+    # Arch), mais le module atterrit DANS le venv. C'est ce qui permet à `uv sync` de suffire :
+    # plus besoin de `uv venv --system-site-packages` pour aller chercher le freenect système.
+    # Le .so compilé reste lié à /usr/lib/libfreenect.so.0 à l'exécution.
+    "freenect>=0.1.0",
+]
+
+[dependency-groups]
+# Les tests s'exécutent en scripts autonomes (`python tests/test_x.py`), sans pytest.
+# PyInstaller ne sert qu'à produire le binaire embarqué dans le build Unity (build_bridge.sh) :
+# il n'a rien à faire sur la machine de démo, d'où le groupe dev. `uv sync` l'installe par
+# défaut ; `uv sync --no-dev` donne l'environnement minimal d'exécution.
+dev = ["pyinstaller>=6.10"]
+
+[tool.uv]
+# Le venv doit tourner sur un interpréteur système : c'est le seul pour lequel les headers de
+# développement (Python.h) sont garantis présents pour compiler freenect, et cela évite qu'uv
+# télécharge une CPython managée dont l'ABI diffère de celle des paquets système.
+python-preference = "only-system"
+
+# Projet applicatif, pas une lib : rien à builder ni à installer, `kibird_bridge` est importé
+# depuis le dossier courant. Évite d'imposer un backend de build (hatchling/setuptools).
+package = false
