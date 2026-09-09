@@ -1,41 +1,64 @@
+using KiBird.MainMenu;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+#if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
+#endif
 
 /// <summary>
-/// Écran de fin de partie : score, temps de survie, décompte puis rechargement automatique
-/// de la scène pour le joueur suivant. Espace / R / Entrée relancent tout de suite.
-/// Les références UI sont câblées dans la scène ; celles laissées vides sont retrouvées par nom.
+/// Met à jour l'écran de résultat sérialisé dans Blocks.unity.
+/// La disposition et le style vivent dans la hiérarchie Unity, pas dans ce script.
 /// </summary>
 public class GameOverUI : MonoBehaviour
 {
     public static GameOverUI Instance { get; private set; }
 
-    [Header("Paramètres de Réinitialisation")]
-    [Tooltip("Délai en secondes avant le redémarrage automatique de la scène.")]
-    public float autoResetDelay = 5f;
-
-    [Tooltip("Permet de redémarrer immédiatement avec la touche Espace ou R.")]
+    [Header("Réinitialisation")]
+    [Min(0.1f)] public float autoResetDelay = 5f;
     public bool allowInstantRestartKeys = true;
 
-    [Header("Éléments d'Interface")]
+    [Header("Références - objet GameOverMenu")]
     public GameObject rootPanel;
+    public Text statusText;
     public Text titleText;
+    public Text scoreLabelText;
     public Text scoreText;
+    public Text timeLabelText;
     public Text survivalTimeText;
+    public Text bestScoreText;
     public Text countdownText;
+    public Text restartHintText;
     public Image backgroundOverlay;
     public Image cardBg;
+    public Image accentBar;
+    public Image resultBadge;
+    public Image statsPanelBg;
+    public Image countdownPanelBg;
+    public Image countdownProgress;
 
-    [Header("Sons de Fin de Partie")]
+    [Header("Palette Défaite")]
+    public Color defeatAccent = new Color(1f, 0.73f, 0.16f);
+    public Color defeatCard = new Color(0.20f, 0.095f, 0.035f, 0.98f);
+    public Color defeatOverlay = new Color(0.02f, 0.035f, 0.02f, 0.68f);
+    public Color defeatSubPanel = new Color(0.10f, 0.055f, 0.025f, 0.86f);
+
+    [Header("Palette Victoire")]
+    public Color victoryAccent = new Color(0.54f, 0.90f, 0.32f);
+    public Color victoryCard = new Color(0.12f, 0.22f, 0.07f, 0.98f);
+    public Color victoryOverlay = new Color(0.015f, 0.08f, 0.025f, 0.65f);
+    public Color victorySubPanel = new Color(0.055f, 0.14f, 0.045f, 0.86f);
+
+    [Header("Sons")]
     public AudioSource gameOverSound;
     public AudioClip defeatSound;
     public AudioClip victorySound;
 
     private float countdownTimer;
     private bool isGameOverActive;
-    private bool isVictory;
+
+    private static readonly Color Cream = new Color(1f, 0.94f, 0.75f);
+    private static readonly Color Moss = new Color(0.62f, 0.83f, 0.46f);
 
     private void Awake()
     {
@@ -49,12 +72,21 @@ public class GameOverUI : MonoBehaviour
             return;
         }
 
-        ResolveReferences();
-
-        if (rootPanel != null)
+#if UNITY_EDITOR
+        if (victorySound == null)
         {
-            rootPanel.SetActive(false);
+            victorySound = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/AssetStore/Sounds/victory.wav");
         }
+#endif
+
+        if (rootPanel == null)
+        {
+            Debug.LogError("[GameOverUI] L'objet GameOverMenu n'est pas assigné dans l'Inspector.");
+            enabled = false;
+            return;
+        }
+
+        rootPanel.SetActive(false);
     }
 
     private void OnEnable()
@@ -69,115 +101,39 @@ public class GameOverUI : MonoBehaviour
         MoveBird.OnBirdWon -= HandleBirdWon;
     }
 
-    private void HandleBirdDied()
+    private void OnDestroy()
     {
-        ShowGameOver(false);
+        if (Instance == this) Instance = null;
     }
 
-    private void HandleBirdWon()
-    {
-        ShowVictory();
-    }
-
-    public void ShowVictory()
-    {
-        ShowGameOver(true);
-    }
+    private void HandleBirdDied() => ShowGameOver(false);
+    private void HandleBirdWon() => ShowGameOver(true);
+    public void ShowVictory() => ShowGameOver(true);
 
     public void ShowGameOver(bool victory = false)
     {
-        if (isGameOverActive) return;
+        if (isGameOverActive || rootPanel == null) return;
+
         isGameOverActive = true;
-        isVictory = victory;
-        countdownTimer = autoResetDelay;
+        countdownTimer = Mathf.Max(0.1f, autoResetDelay);
+        rootPanel.SetActive(true);
 
-        ResolveReferences();
+        int currentScore = MoveBird.CurrentScore;
+        int bestScore = ScoreManager.GetBestScore();
+        bool isNewRecord = currentScore > 0 && currentScore >= bestScore;
 
-        if (rootPanel != null)
-        {
-            rootPanel.SetActive(true);
-        }
+        ApplyTheme(victory, isNewRecord);
+        if (scoreText != null) scoreText.text = $"{currentScore:N0} PTS";
+        if (bestScoreText != null) bestScoreText.text = $"{bestScore:N0} PTS";
 
-        if (isVictory)
-        {
-            ApplyVictoryTheme();
-        }
-        else
-        {
-            ApplyDefeatTheme();
-        }
-
-        if (scoreText != null)
-        {
-            string label = isVictory ? "SCORE FINAL" : "SCORE";
-            scoreText.text = $"{label} : {MoveBird.CurrentScore:N0} PTS";
-        }
-
+        int secondsTotal = Mathf.FloorToInt(MoveBird.SurvivalTime);
         if (survivalTimeText != null)
         {
-            int totalSeconds = Mathf.FloorToInt(MoveBird.SurvivalTime);
-            string label = isVictory ? "TEMPS DE VOL" : "TEMPS DE SURVIE";
-            survivalTimeText.text = $"{label} : {totalSeconds / 60:D2}:{totalSeconds % 60:D2}";
+            survivalTimeText.text = $"{secondsTotal / 60:D2}:{secondsTotal % 60:D2}";
         }
 
         UpdateCountdownLabel();
-    }
-
-    private void ApplyVictoryTheme()
-    {
-        if (titleText != null)
-        {
-            titleText.text = "VICTOIRE !";
-            titleText.color = new Color(0.2f, 0.95f, 0.45f);
-        }
-
-        if (cardBg != null)
-        {
-            cardBg.color = new Color(0.04f, 0.22f, 0.12f, 0.96f);
-        }
-
-        if (backgroundOverlay != null)
-        {
-            backgroundOverlay.color = new Color(0.01f, 0.10f, 0.05f, 0.88f);
-        }
-
-        PlayEndSound(victorySound);
-    }
-
-    private void ApplyDefeatTheme()
-    {
-        if (titleText != null)
-        {
-            titleText.text = "GAME OVER";
-            titleText.color = new Color(1f, 0.85f, 0.15f);
-        }
-
-        if (cardBg != null)
-        {
-            cardBg.color = new Color(0.07f, 0.14f, 0.25f, 0.95f);
-        }
-
-        if (backgroundOverlay != null)
-        {
-            backgroundOverlay.color = new Color(0.04f, 0.08f, 0.15f, 0.88f);
-        }
-
-        PlayEndSound(defeatSound);
-    }
-
-    private void PlayEndSound(AudioClip clip)
-    {
-        if (gameOverSound == null) return;
-
-        gameOverSound.Stop();
-        if (clip != null)
-        {
-            gameOverSound.PlayOneShot(clip);
-        }
-        else
-        {
-            gameOverSound.Play();
-        }
+        PlayResultSound(victory);
     }
 
     private void Update()
@@ -193,83 +149,87 @@ public class GameOverUI : MonoBehaviour
             return;
         }
 
-        if (countdownTimer <= 0f)
+        if (countdownTimer <= 0f) RestartScene();
+    }
+
+    private void ApplyTheme(bool victory, bool isNewRecord)
+    {
+        Color accent = victory ? victoryAccent : defeatAccent;
+        Color subPanel = victory ? victorySubPanel : defeatSubPanel;
+
+        if (statusText != null)
         {
-            RestartScene();
+            statusText.text = isNewRecord
+                ? "NOUVEAU RECORD !"
+                : victory ? "PARCOURS TERMINÉ" : "FIN DU VOL";
+            statusText.color = isNewRecord ? defeatAccent : Moss;
         }
+        if (titleText != null)
+        {
+            titleText.text = victory ? "VICTOIRE !" : "GAME OVER";
+            titleText.color = accent;
+        }
+        if (scoreLabelText != null) scoreLabelText.text = victory ? "SCORE FINAL" : "SCORE DU VOL";
+        if (timeLabelText != null) timeLabelText.text = victory ? "TEMPS DE VOL" : "TEMPS DE SURVIE";
+        if (restartHintText != null)
+        {
+            restartHintText.text = allowInstantRestartKeys
+                ? "ESPACE POUR REJOUER"
+                : "PRÉPAREZ LE PROCHAIN PILOTE";
+        }
+
+        if (backgroundOverlay != null) backgroundOverlay.color = victory ? victoryOverlay : defeatOverlay;
+        if (cardBg != null) cardBg.color = victory ? victoryCard : defeatCard;
+        if (accentBar != null) accentBar.color = accent;
+        if (resultBadge != null) resultBadge.color = accent;
+        if (statsPanelBg != null) statsPanelBg.color = subPanel;
+        if (countdownPanelBg != null) countdownPanelBg.color = subPanel;
+        if (countdownProgress != null) countdownProgress.color = accent;
+        if (scoreText != null) scoreText.color = Cream;
     }
 
     private void UpdateCountdownLabel()
     {
-        if (countdownText == null) return;
-
-        int remaining = Mathf.Max(1, Mathf.CeilToInt(countdownTimer));
-        countdownText.text = $"Nouvelle partie dans {remaining}s...";
+        int remaining = Mathf.Max(0, Mathf.CeilToInt(countdownTimer));
+        if (countdownText != null) countdownText.text = $"NOUVEAU VOL DANS {remaining}s";
+        if (countdownProgress != null)
+        {
+            countdownProgress.fillAmount = Mathf.Clamp01(countdownTimer / Mathf.Max(0.1f, autoResetDelay));
+        }
     }
 
-    private static bool IsRestartKeyPressed()
+    private void PlayResultSound(bool victory)
     {
-        var kb = Keyboard.current;
-        return kb != null && (kb.spaceKey.wasPressedThisFrame ||
-                              kb.rKey.wasPressedThisFrame ||
-                              kb.enterKey.wasPressedThisFrame);
+        AudioClip clip = victory ? victorySound : defeatSound;
+        if (clip == null && !victory && gameOverSound != null) clip = gameOverSound.clip;
+        if (clip == null) return;
+
+        if (gameOverSound != null)
+        {
+            gameOverSound.Stop();
+            gameOverSound.PlayOneShot(clip);
+        }
+        else
+        {
+            AudioSource.PlayClipAtPoint(clip, Camera.main != null ? Camera.main.transform.position : Vector3.zero);
+        }
+    }
+
+    private bool IsRestartKeyPressed()
+    {
+#if ENABLE_INPUT_SYSTEM
+        Keyboard keyboard = Keyboard.current;
+        return keyboard != null && (keyboard.spaceKey.wasPressedThisFrame || keyboard.rKey.wasPressedThisFrame ||
+                                    keyboard.enterKey.wasPressedThisFrame);
+#else
+        return Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.R) ||
+               Input.GetKeyDown(KeyCode.Return);
+#endif
     }
 
     public void RestartScene()
     {
         isGameOverActive = false;
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
-    }
-
-    /// <summary>Retrouve par nom les références UI laissées vides dans l'inspecteur.</summary>
-    private void ResolveReferences()
-    {
-        if (rootPanel == null)
-        {
-            Transform panelTr = transform.Find("GameOverMenu") ?? transform.Find("GameOverPanel");
-            if (panelTr != null) rootPanel = panelTr.gameObject;
-        }
-
-        if (rootPanel == null) return;
-
-        if (titleText == null) titleText = FindText("Title", "GAME OVER", "VICTOIRE");
-        if (scoreText == null) scoreText = FindText("Score");
-        if (survivalTimeText == null) survivalTimeText = FindText("Time", "Survival");
-        if (countdownText == null) countdownText = FindText("Countdown");
-
-        if (cardBg == null)
-        {
-            foreach (var img in rootPanel.GetComponentsInChildren<Image>(true))
-            {
-                if (img.name.IndexOf("Card", System.StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    cardBg = img;
-                    break;
-                }
-            }
-        }
-
-        if (backgroundOverlay == null)
-        {
-            Transform bgTr = rootPanel.transform.Find("BackgroundOverlay");
-            backgroundOverlay = bgTr != null ? bgTr.GetComponent<Image>() : rootPanel.GetComponent<Image>();
-        }
-    }
-
-    /// <summary>Premier Text dont le nom ou le contenu contient l'un des motifs donnés.</summary>
-    private Text FindText(params string[] patterns)
-    {
-        foreach (var txt in rootPanel.GetComponentsInChildren<Text>(true))
-        {
-            foreach (string pattern in patterns)
-            {
-                if (txt.name.IndexOf(pattern, System.StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    txt.text.Contains(pattern))
-                {
-                    return txt;
-                }
-            }
-        }
-        return null;
     }
 }
