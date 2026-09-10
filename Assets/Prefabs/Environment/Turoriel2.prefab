@@ -196,6 +196,7 @@ GameObject:
   - component: {fileID: 2066247373486361287}
   - component: {fileID: 1185357554355690642}
   - component: {fileID: 6474943298266618648}
+  - component: {fileID: 482607579063359410}
   m_Layer: 0
   m_Name: Panneau monter
   m_TagString: Untagged
@@ -218,6 +219,7 @@ Transform:
   m_Children:
   - {fileID: 2764108814407899335}
   - {fileID: 6489239603472050938}
+  - {fileID: 6235893428024939432}
   m_Father: {fileID: 7759422848938277464}
   m_LocalEulerAnglesHint: {x: -90.02, y: 180, z: 36.906006}
 --- !u!33 &2066247373486361287
@@ -253,7 +255,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: b3a9723e0bf39e7488dc810ba6deb97c, type: 2}
+  - {fileID: 2100000, guid: 2a5fcac820ffb328a8b8f88316f15ccf, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -298,6 +300,21 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.013389941, y: 0.0013439395, z: 0.008}
   m_Center: {x: 0.00004292148, y: -0.00012588117, z: 0.012}
+--- !u!114 &482607579063359410
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2408763869156394876}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 67442ed552723c5beb5b3e469bd6c82f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SignGlower
+  passageTriggerCollider: {fileID: 3271438694237025531}
+  startGlowing: 1
+  playerTag: Player
 --- !u!1 &3094389438231977178
 GameObject:
   m_ObjectHideFlags: 0
@@ -593,8 +610,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4281520370
-  m_fontColor: {r: 0.9481132, g: 0.8174468, b: 0.19677822, a: 1}
+    rgba: 4294638335
+  m_fontColor: {r: 1, g: 0.9803922, b: 0.9803922, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -827,6 +844,59 @@ Transform:
   - {fileID: 8762999098342441935}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &6990978422703783728
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6235893428024939432}
+  - component: {fileID: 3271438694237025531}
+  m_Layer: 0
+  m_Name: GameObject
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6235893428024939432
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6990978422703783728}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.00000007444759, y: -0.0000000039581205, z: -0.31581295, w: 0.94882154}
+  m_LocalPosition: {x: -0.0018, y: -0.0023, z: -0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2561202271130154130}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: -36.82}
+--- !u!65 &3271438694237025531
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6990978422703783728}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 1
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.57, y: 0.01, z: 0.06}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &7113436050634540065
 GameObject:
   m_ObjectHideFlags: 0
@@ -839,6 +909,8 @@ GameObject:
   - component: {fileID: 4396406225577378086}
   - component: {fileID: 9122729888005920630}
   - component: {fileID: 1683403767303215085}
+  - component: {fileID: 4091541367873834042}
+  - component: {fileID: 8541170200692150487}
   m_Layer: 0
   m_Name: Panneau descendre
   m_TagString: Untagged
@@ -897,7 +969,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: b3a9723e0bf39e7488dc810ba6deb97c, type: 2}
+  - {fileID: 2100000, guid: 2a5fcac820ffb328a8b8f88316f15ccf, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -940,8 +1012,44 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.013389941, y: 0.0013439377, z: 0.016539076}
-  m_Center: {x: 0.0000429219, y: -0.00012588054, z: 0.008018957}
+  m_Size: {x: 0.013389941, y: 0.0013439377, z: 0.017161138}
+  m_Center: {x: 0.00004292163, y: -0.00012588056, z: 0.008329974}
+--- !u!65 &4091541367873834042
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7113436050634540065}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 1
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.05, y: 0.005, z: -0.05}
+  m_Center: {x: 0.00004292163, y: -0.00012588056, z: 0.0083299745}
+--- !u!114 &8541170200692150487
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7113436050634540065}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 67442ed552723c5beb5b3e469bd6c82f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SignGlower
+  passageTriggerCollider: {fileID: 4091541367873834042}
+  startGlowing: 0
+  playerTag: Player
 --- !u!1 &7611272355028012850
 GameObject:
   m_ObjectHideFlags: 0
@@ -1057,8 +1165,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4281520370
-  m_fontColor: {r: 0.9481132, g: 0.8174468, b: 0.19677822, a: 1}
+    rgba: 4294638335
+  m_fontColor: {r: 1, g: 0.9803922, b: 0.9803922, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
