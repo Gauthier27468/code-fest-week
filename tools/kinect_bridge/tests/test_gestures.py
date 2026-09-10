@@ -232,6 +232,47 @@ def test_glide_pose_rises_to_one():
     assert out.glide > 0.95
 
 
+def _settle_glide(l_wrist_y, r_wrist_y, cfg=None):
+    """Fait converger le filtre sur une posture tenue et renvoie la sortie finale."""
+    cfg = cfg or GestureConfig()
+    state = GestureState(neutral_distance_m=2.0)
+    t = 0.0
+    out = None
+    for _ in range(60):  # 2s à 30Hz : le lissage a largement rattrapé la cible
+        t += 1 / 30.0
+        out = update_gestures(
+            state, cfg, now=t, dt=1 / 30.0,
+            l_shoulder=(0.6, 0.3), r_shoulder=(0.4, 0.3),  # largeur d'épaules = 0.2
+            l_wrist=(0.58, l_wrist_y), r_wrist=(0.42, r_wrist_y),
+            distance_m=2.0,
+        )
+    return out
+
+
+def test_slightly_lowered_arms_still_full_glide():
+    """Bras légèrement sous la ligne d'épaules : plané maximum quand même.
+
+    Tenir les bras pile à l'horizontale toute une partie fatigue trop vite pour une JPO.
+    La marge de confort (glide_full_drop_shoulders) doit donc rendre le plané plein
+    atteignable dans une posture réellement tenable.
+    """
+    cfg = GestureConfig()
+    # 0.3 largeur d'épaules sous la ligne, soit à l'intérieur du plateau de 0.35.
+    out = _settle_glide(0.3 + 0.2 * 0.3, 0.3 + 0.2 * 0.3, cfg)
+    assert out.glide > 0.99, f"bras légèrement baissés doivent rester en plané plein, obtenu {out.glide}"
+    assert out.lift > cfg.glide_full_sink - 0.01, "le taux de chute doit être celui du plané plein"
+
+
+def test_arms_above_shoulders_stay_full_glide():
+    """Lever les bras PLUS HAUT que les épaules ne doit jamais pénaliser le joueur.
+
+    Le calcul utilisait l'écart absolu à la ligne d'épaules : bras trop hauts faisait
+    retomber glide exactement comme bras trop bas, ce qui est contre-intuitif.
+    """
+    out = _settle_glide(0.15, 0.15)  # poignets nettement au-dessus des épaules (0.3)
+    assert out.glide > 0.99, f"bras au-dessus des épaules doivent donner glide~1, obtenu {out.glide}"
+
+
 def test_lean_sign_matches_player_intent():
     """Le joueur penche vers SA gauche -> l'oiseau doit aller à GAUCHE de l'écran (lean < 0).
 

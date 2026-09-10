@@ -62,8 +62,11 @@ public class MoveBird : MonoBehaviour
     public float diveAnimationThreshold = -0.25f;
 
     [Header("Boundary Clamping (Montagnes & Altitude)")]
-    [Tooltip("Active le confinement de l'oiseau dans les limites latérales des montagnes et d'altitude.")]
+    [Tooltip("Active le confinement global de l'oiseau (limites latérales et altitude).")]
     public bool enableClamping = true;
+
+    [Tooltip("Active le confinement horizontal (axe X). Décocher si les limites latérales sont gérées par les colliders solides des falaises/rochers.")]
+    public bool enableHorizontalClamping = true;
 
     [Tooltip("Limite X gauche (montagne gauche).")]
     public float defaultMinX = -0.97f;
@@ -110,7 +113,7 @@ public class MoveBird : MonoBehaviour
 
     private static int bonusScore = 0;
     private float startZPos = 0f;
-    
+
     [Header("UI Menu & Sound Effect")]
     [SerializeField] private Text scoreText;
     private AudioSource birdSource;
@@ -308,11 +311,11 @@ public class MoveBird : MonoBehaviour
 
         HandleSpeedInput();
         UpdateBoundaries();
-        Vector3 input = GetInput();
-        input = EnforceBoundaryConstraints(input);
+        Vector3 rawInput = GetInput();
+        Vector3 input = EnforceBoundaryConstraints(rawInput);
         Move(input);
         Bank(input);
-        UpdateAnimation(input);
+        UpdateAnimation(rawInput);
 
         RefreshScoreLabel();
     }
@@ -806,7 +809,6 @@ public class MoveBird : MonoBehaviour
         if (transform.position.y >= currentMaxHeight - 0.05f)
         {
             ceilingLockoutTimer = ceilingRecoveryDuration;
-            keyboardFlapTimer = 0f;
         }
 
         if (ceilingLockoutTimer > 0f)
@@ -817,7 +819,6 @@ public class MoveBird : MonoBehaviour
             {
                 input.y = glideSink;
             }
-            keyboardFlapTimer = 0f;
         }
 
         // Plancher d'altitude : empêche de piquer sous le sol ou l'eau
@@ -830,14 +831,17 @@ public class MoveBird : MonoBehaviour
             }
         }
 
-        // Confinement horizontal : empêche de braquer davantage dans la paroi rocheuse
-        if (transform.position.x <= currentMinX + 0.05f && input.x < 0f)
+        // Confinement horizontal : empêche de braquer davantage dans la paroi rocheuse (si activé)
+        if (enableHorizontalClamping)
         {
-            input.x = 0f;
-        }
-        else if (transform.position.x >= currentMaxX - 0.05f && input.x > 0f)
-        {
-            input.x = 0f;
+            if (transform.position.x <= currentMinX + 0.05f && input.x < 0f)
+            {
+                input.x = 0f;
+            }
+            else if (transform.position.x >= currentMaxX - 0.05f && input.x > 0f)
+            {
+                input.x = 0f;
+            }
         }
 
         return input;
@@ -974,7 +978,10 @@ public class MoveBird : MonoBehaviour
         if (enableClamping)
         {
             Vector3 pos = transform.position;
-            pos.x = Mathf.Clamp(pos.x, currentMinX, currentMaxX);
+            if (enableHorizontalClamping)
+            {
+                pos.x = Mathf.Clamp(pos.x, currentMinX, currentMaxX);
+            }
             pos.y = Mathf.Clamp(pos.y, currentMinHeight, currentMaxHeight);
             transform.position = pos;
         }
@@ -1001,11 +1008,11 @@ public class MoveBird : MonoBehaviour
         // - En piqué / plongeon -> Dive = true, Flying = false (joue l'animation dive)
         // - En mode planage ou neutre -> Flying = false, Dive = false (joue l'animation idle/planage)
         // - Si l'oiseau tourne OU remonte vers le haut -> Flying = true (joue l'animation Flying/battement)
-        // - Si le plafond d'altitude est atteint (planage forcé) -> Flying = false garanti
+        // - Même si le plafond d'altitude est atteint, l'animation reflète les commandes du joueur (pas de planage forcé au niveau de l'animation)
         bool isDiving = input.y < diveAnimationThreshold;
         bool isTurning = Mathf.Abs(input.x) > turnAnimationThreshold;
         bool isClimbing = input.y > climbAnimationThreshold;
-        bool isFlying = !isDiving && (isTurning || isClimbing) && ceilingLockoutTimer <= 0f;
+        bool isFlying = !isDiving && (isTurning || isClimbing);
 
         animator.SetBool(FlyingHash, isFlying);
         if (hasDiveParameter)

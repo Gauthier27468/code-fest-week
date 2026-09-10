@@ -41,6 +41,45 @@ relancer le script 2-3 fois à la main pour que ça marche). Le bridge referme e
 maintenant l'accès Kinect automatiquement jusqu'à 4 fois (1,5 s entre chaque essai) avant
 d'abandonner — un seul lancement suffit dans l'immense majorité des cas.
 
+## Recentrage automatique (`--auto-center`, actif par défaut)
+
+`autocenter.py` incline la Kinect pour amener la tête du joueur à ~35 % de la hauteur d'image,
+de façon que les épaules, hanches et poignets — les articulations qui alimentent le tracking et
+les gestes — tiennent en dessous. **Le recentrage horizontal n'existe pas** : la Kinect n'a qu'un
+moteur, vertical. Se placer dans la zone au sol reste à la charge du joueur.
+
+Réglages en tête de fichier : `TARGET_HEAD_Y`, `DEADZONE` (0.08, absorbe le jitter MediaPipe),
+`COMMAND_INTERVAL_S` (1.2 s, le moteur met ~1 s à parcourir sa course), butées `±28°`.
+Désactivation : `--no-auto-center`.
+
+**Pourquoi le moteur est piloté en USB direct et pas via `freenect`.** `freenect.open_device()`
+réclame l'interface caméra **en même temps** que le moteur. Or `capture.py` la détient déjà via
+`sync_get_video()`, donc l'ouverture échoue :
+
+```
+Failed to claim camera interface: LIBUSB_ERROR_BUSY
+open_device -> None
+```
+
+Dans l'autre ordre, c'est la capture qui meurt. La solution propre serait
+`freenect_select_subdevices(ctx, DEVICE_MOTOR)`, que le binding Cython n'expose pas. Mais le
+moteur est un périphérique USB **distinct** de la caméra (`045e:02b0` contre `045e:02ae`) :
+`pyusb` lui parle donc en direct, avec le protocole de `libfreenect` (`src/tilt.c`), sans
+jamais toucher à la caméra.
+
+**Permissions USB.** L'accès direct au moteur demande le droit d'écriture sur
+`/dev/bus/usb/*`. Si le bridge affiche `Commande moteur impossible ([Errno 13] Access denied)`,
+poser une règle udev :
+
+```bash
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="045e", ATTR{idProduct}=="02b0", MODE="0666"' \
+    | sudo tee /etc/udev/rules.d/51-kinect-motor.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+Une panne moteur n'est jamais fatale : le bridge continue sans recentrage, et reprend le moteur
+tout seul s'il réapparaît sur le bus (utile quand la Kinect se déconnecte en cours de partie).
+
 ## ✅ Blocage mediapipe 1.0.1 (résolu)
 
 **Symptôme** : `PoseLandmarker.create_from_options()` tuait le process entier par `SIGKILL`
@@ -91,9 +130,10 @@ kibird_bridge/
   gestures.py   # lean/lift/glide/throttle + filtre One Euro — 13 tests
   segmentation.py # fond > 4 m masqué + isolation du joueur le plus proche — 10 tests
   pose.py       # wrapper MediaPipe PoseLandmarker
+  autocenter.py # recentrage vertical auto (moteur de tilt, USB direct) — 12 tests
   bridge.py     # orchestration CLI
   preview.py    # fenêtre caméra + overlay squelette/commandes (option --preview, debug)
-tests/          # 39 tests : for t in tests/test_*.py; do uv run python $t; done
+tests/          # 51 tests : for t in tests/test_*.py; do uv run python $t; done
   fixtures/     # image de test réelle utilisée par le test d'intégration
 models/         # modèle .task téléchargé par run_bridge.sh (non versionné, cf. .gitignore)
 bridge_entry.py     # point d'entrée du binaire gelé (PyInstaller veut un script, pas un module)

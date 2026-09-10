@@ -58,6 +58,17 @@ public class MapGenerator : MonoBehaviour
     [Tooltip("Aligne le farClipPlane de la caméra sur la fin du brouillard.")]
     public bool adjustCameraFarClip = true;
 
+    [Header("Optimisation des Colliders (Fenêtre Active n et n+1)")]
+    [Tooltip("Si activé, précharge et active uniquement les colliders solides (physiques) du bloc courant et des blocs immédiatement suivants. Les triggers (anneaux, nids, events) restent toujours actifs.")]
+    public bool preloadOnlyCurrentAndNextColliders = true;
+
+    [Tooltip("Nombre de blocs d'avance pour lesquels les colliders solides sont actifs (1 = bloc n + bloc n+1).")]
+    [Range(1, 5)]
+    public int aheadBlocksColliderCount = 1;
+
+    [Tooltip("Conserve les colliders du bloc précédent (n-1) actifs pour éviter tout trou physique à la frontière.")]
+    public bool keepPreviousBlockColliders = false;
+
     [Header("Hiérarchie & Références")]
     [Tooltip("Parent des blocs générés. Si vide, ce GameObject.")]
     public Transform blocksParent;
@@ -74,6 +85,24 @@ public class MapGenerator : MonoBehaviour
         public GameObject instance;
         public bool isSpawned => instance != null;
         public bool isDestroyed;
+
+        [System.NonSerialized]
+        public Collider[] solidColliders;
+        [System.NonSerialized]
+        public bool collidersActive = true;
+
+        public void SetSolidCollidersActive(bool active)
+        {
+            if (collidersActive == active || solidColliders == null) return;
+            collidersActive = active;
+            for (int i = 0; i < solidColliders.Length; i++)
+            {
+                if (solidColliders[i] != null)
+                {
+                    solidColliders[i].enabled = active;
+                }
+            }
+        }
     }
 
     private BlockSlot[] slots;
@@ -106,7 +135,13 @@ public class MapGenerator : MonoBehaviour
         CleanExistingSceneBlocks();
         SetupFog();
         BuildPlan();
-        UpdateStreaming(birdTransform != null ? birdTransform.position.z : startZ);
+        float initialZ = birdTransform != null ? birdTransform.position.z : startZ;
+        UpdateStreaming(initialZ);
+
+        if (preloadOnlyCurrentAndNextColliders)
+        {
+            UpdateActiveColliders(initialZ, true);
+        }
     }
 
     private void Update()
@@ -119,6 +154,11 @@ public class MapGenerator : MonoBehaviour
 
         float birdZ = birdTransform.position.z;
         UpdateStreaming(birdZ);
+
+        if (preloadOnlyCurrentAndNextColliders)
+        {
+            UpdateActiveColliders(birdZ);
+        }
 
         if (destroyPassedBlocks)
         {
@@ -267,6 +307,9 @@ public class MapGenerator : MonoBehaviour
         {
             SetupEndingBlockNest(instance);
         }
+
+        // Cache et initialise les colliders solides pour l'optimisation des blocs n et n+1
+        CacheAndInitializeSlotColliders(slot, index);
     }
 
     /// <summary>Garantit qu'un BirdNestTrigger est présent sur le nid du bloc de fin.</summary>
@@ -321,12 +364,103 @@ public class MapGenerator : MonoBehaviour
             {
                 if (slot.instance != null) Destroy(slot.instance);
                 slot.instance = null;
+                slot.solidColliders = null;
                 slot.isDestroyed = true;
             }
         }
     }
 
-    /// <summary>Brouillard linéaire calé sur la couleur de fond de la caméra.</summary>
+    /// <summary>
+    /// Met en cache tous les colliders physiques solides (!isTrigger) du bloc instancié.
+    /// Les triggers (HoopScore, ActivateOnTrigger, BirdNestTrigger) restent préservés et toujours actifs.
+    /// </summary>
+    private void CacheAndInitializeSlotColliders(BlockSlot slot, int blockIndex)
+    {
+        if (slot == null || slot.instance == null) return;
+
+        Collider[] allCols = slot.instance.GetComponentsInChildren<Collider>(true);
+        List<Collider> solidList = new List<Collider>(allCols.Length);
+
+        for (int i = 0; i < allCols.Length; i++)
+        {
+            Collider col = allCols[i];
+            // On isole strictement les colliders solides pouvant tuer l'oiseau en cas de collision
+            if (col != null && !col.isTrigger)
+            {
+                solidList.Add(col);
+            }
+        }
+
+        slot.solidColliders = solidList.ToArray();
+
+        if (preloadOnlyCurrentAndNextColliders)
+        {
+            int currentBlock = GetCurrentBirdBlockIndex();
+            bool shouldBeActive = IsBlockInActiveColliderWindow(blockIndex, currentBlock);
+            slot.collidersActive = shouldBeActive;
+            for (int i = 0; i < slot.solidColliders.Length; i++)
+            {
+                if (slot.solidColliders[i] != null)
+                {
+                    slot.solidColliders[i].enabled = shouldBeActive;
+                }
+            }
+        }
+        else
+        {
+            slot.collidersActive = true;
+        }
+    }
+
+    /// <summary>
+    /// Calcule l'index du bloc sur lequel se situe actuellement l'oiseau.
+    /// </summary>
+    public int GetCurrentBirdBlockIndex()
+    {
+        float birdZ = birdTransform != null ? birdTransform.position.z : startZ;
+        if (birdZ < startZ) return 0;
+        int idx = Mathf.FloorToInt((birdZ - startZ) / blockInterval);
+        int maxIndex = (slots != null && slots.Length > 0) ? slots.Length - 1 : Mathf.Max(3, totalBlocks - 1);
+        return Mathf.Clamp(idx, 0, maxIndex);
+    }
+
+    /// <summary>
+    /// Vérifie si un bloc donné fait partie de la fenêtre active des colliders (bloc actuel n et n+1).
+    /// </summary>
+    public bool IsBlockInActiveColliderWindow(int blockIndex, int currentBlock)
+    {
+        int minActive = keepPreviousBlockColliders ? currentBlock - 1 : currentBlock;
+        int maxActive = currentBlock + aheadBlocksColliderCount;
+        return blockIndex >= minActive && blockIndex <= maxActive;
+    }
+
+    private int lastColliderUpdateBlockIndex = -999;
+
+    /// <summary>
+    /// Met à jour l'état activé/désactivé des colliders solides en fonction de la position de l'oiseau.
+    /// Zéro allocation Garbage Collector à l'exécution.
+    /// </summary>
+    public void UpdateActiveColliders(float birdZ, bool forceUpdate = false)
+    {
+        if (slots == null) return;
+
+        int currentBlock = GetCurrentBirdBlockIndex();
+        if (!forceUpdate && currentBlock == lastColliderUpdateBlockIndex) return;
+        lastColliderUpdateBlockIndex = currentBlock;
+
+        for (int i = 0; i < slots.Length; i++)
+        {
+            var slot = slots[i];
+            if (slot == null || !slot.isSpawned || slot.isDestroyed) continue;
+
+            bool shouldBeActive = IsBlockInActiveColliderWindow(i, currentBlock);
+            slot.SetSolidCollidersActive(shouldBeActive);
+        }
+    }
+
+    /// <summary>
+    /// Configure le brouillard (Linear Fog) et le farClipPlane de la caméra.
+    /// </summary>
     public void SetupFog()
     {
         if (!enableFog) return;
@@ -393,6 +527,7 @@ public class MapGenerator : MonoBehaviour
     {
         totalBlocks = Mathf.Max(4, totalBlocks);
         blockInterval = Mathf.Max(1f, blockInterval);
+        aheadBlocksColliderCount = Mathf.Clamp(aheadBlocksColliderCount, 1, 5);
         if (enableFog)
         {
             SetupFog();
@@ -476,13 +611,25 @@ public class MapGenerator : MonoBehaviour
     private void OnDrawGizmosSelected()
     {
         int count = Mathf.Max(4, totalBlocks);
-        Gizmos.color = Color.green;
+        int currentBlock = Application.isPlaying ? GetCurrentBirdBlockIndex() : 0;
 
         for (int i = 0; i < count; i++)
         {
             float z = startZ + i * blockInterval;
             Vector3 center = new Vector3(3.9f, 5.5f, z + blockInterval * 0.5f);
-            Gizmos.DrawWireCube(center, new Vector3(9.8f, 8f, blockInterval));
+            Vector3 size = new Vector3(9.8f, 8f, blockInterval);
+
+            if (Application.isPlaying && preloadOnlyCurrentAndNextColliders)
+            {
+                bool isActive = IsBlockInActiveColliderWindow(i, currentBlock);
+                Gizmos.color = isActive ? new Color(0f, 1f, 0.2f, 0.85f) : new Color(0.4f, 0.4f, 0.4f, 0.2f);
+            }
+            else
+            {
+                Gizmos.color = Color.green;
+            }
+
+            Gizmos.DrawWireCube(center, size);
         }
 
         if (!enableFog) return;
