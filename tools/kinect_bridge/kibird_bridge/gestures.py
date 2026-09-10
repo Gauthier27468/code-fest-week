@@ -79,6 +79,11 @@ class GestureConfig:
 
     # Ecart poignet/epaule, en largeurs d'epaules, au-dela duquel glide vaut 0.
     glide_arm_range_shoulders: float = 1.4
+    # Marge de confort SOUS la ligne d'epaules, en largeurs d'epaules, ou glide vaut encore 1.
+    # Tenir les bras pile a hauteur d'epaules pendant toute une partie fatigue vite : 0.35
+    # correspond a ~15 deg sous l'horizontale, une posture ailes deployees tenable plusieurs
+    # minutes. Au-dessus de la ligne d'epaules, glide vaut 1 quoi qu'il arrive.
+    glide_full_drop_shoulders: float = 0.35
     # Exposant de la courbe de reponse de glide : aplatit pres de glide=1 (un leger affaissement
     # des bras reste du plane plein) et creuse pres de glide=0.
     glide_falloff_power: float = 2.2
@@ -116,17 +121,31 @@ class GestureOutput:
 
 
 def _arm_raise(l_wrist_y, r_wrist_y, l_shoulder_y, r_shoulder_y, shoulder_width: float,
-               max_range_shoulders: float, falloff_power: float = 1.0) -> float:
-    """Hauteur des bras : 0.0 = le long du corps, 1.0 = tendus a l'horizontale.
+               max_range_shoulders: float, falloff_power: float = 1.0,
+               full_drop_shoulders: float = 0.0) -> float:
+    """Hauteur des bras : 0.0 = le long du corps, 1.0 = ailes deployees (ou plus haut).
 
     Normalise par la largeur d'epaules a l'image, qui varie avec la distance au capteur
     exactement comme le reste du squelette : le geste reste calibre pareil a 1m ou a 4m.
+
+    `y` croit vers le bas, donc un ecart positif = poignets SOUS la ligne d'epaules. Deux
+    positions valent le plane plein : bras plus hauts que les epaules (lever davantage ne doit
+    jamais penaliser le joueur), et bras abaisses de moins de `full_drop_shoulders`. Sans ce
+    plateau il faudrait tenir les bras pile a l'horizontale toute la partie, ce qui fatigue
+    trop vite pour un flux continu de visiteurs.
     """
     wrist_mid_y = (l_wrist_y + r_wrist_y) / 2.0
     shoulder_mid_y = (l_shoulder_y + r_shoulder_y) / 2.0
-    offset = abs(wrist_mid_y - shoulder_mid_y)
-    scale = max(shoulder_width, 1e-6) * max_range_shoulders
-    ratio = _clamp(offset / scale, 0.0, 1.0)
+    unit = max(shoulder_width, 1e-6)
+    drop = wrist_mid_y - shoulder_mid_y
+    plateau = unit * full_drop_shoulders
+    if drop <= plateau:
+        return 1.0
+
+    # La course restante part du bas du plateau : le pique plein reste atteint a la meme
+    # hauteur de bras qu'avant (max_range_shoulders), seul le haut de la courbe s'aplatit.
+    scale = max(unit * max_range_shoulders - plateau, 1e-6)
+    ratio = _clamp((drop - plateau) / scale, 0.0, 1.0)
     return _clamp(1.0 - ratio ** falloff_power, 0.0, 1.0)
 
 
@@ -161,7 +180,7 @@ def update_gestures(
     shoulder_width = abs(l_shoulder[0] - r_shoulder[0])
     target = _arm_raise(l_wrist[1], r_wrist[1], l_shoulder[1], r_shoulder[1],
                         shoulder_width, config.glide_arm_range_shoulders,
-                        config.glide_falloff_power)
+                        config.glide_falloff_power, config.glide_full_drop_shoulders)
     state.glide_value = _clamp(state.glide_filter(target, now), 0.0, 1.0)
 
     # lift : comme un vrai oiseau, c'est le battement VERS LE BAS qui pousse sur l'air.
