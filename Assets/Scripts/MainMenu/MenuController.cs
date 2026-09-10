@@ -2,6 +2,10 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Video;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 namespace KiBird.MainMenu
 {
@@ -9,6 +13,8 @@ namespace KiBird.MainMenu
     /// Écran de démarrage. Le menu vit dans la même scène que le jeu : il fige l'oiseau pendant
     /// que le décor tourne déjà, puis le relâche quand la posture bras tendus a été tenue
     /// holdDurationToStart secondes — au clavier (Espace) ou devant la Kinect, indifféremment.
+    /// Tant qu'aucun joueur n'est détecté, affiche une vidéo d'attente et masque le menu principal.
+    /// Dès qu'un joueur est détecté, affiche le menu principal et masque la vidéo.
     /// </summary>
     public class MenuController : MonoBehaviour
     {
@@ -35,6 +41,16 @@ namespace KiBird.MainMenu
         [SerializeField] private GameObject menuVisualRoot;
         [SerializeField] private GameObject menuGameRoot;
 
+        [Header("Attract Mode / Vidéo")]
+        [Tooltip("Conteneur des éléments UI du menu principal (KiBirdLogo, Scores, Silhouette, etc.) affiché quand un joueur est détecté.")]
+        [SerializeField] private GameObject menuContentRoot;
+        [Tooltip("Conteneur de la vidéo d'attente affiché quand aucun joueur n'est détecté.")]
+        [SerializeField] private GameObject videoRoot;
+        [Tooltip("Délai de grâce en secondes avant de basculer sur la vidéo en cas de perte de suivi Kinect.")]
+        [SerializeField] private float playerLostGraceDuration = 1.5f;
+        [Tooltip("Force la détection d'un joueur (pratique en mode Éditeur pour déboguer sans Kinect, touche P).")]
+        [SerializeField] private bool debugForcePlayerPresent = false;
+
         [Header("Couleurs de synchronisation")]
         [SerializeField] private Color waitingColor = new Color(0.76f, 0.68f, 0.48f);
         [SerializeField] private Color detectedColor = new Color(0.62f, 0.84f, 0.46f);
@@ -45,6 +61,10 @@ namespace KiBird.MainMenu
         private float holdTimer;
         private bool isStarting;
         private MoveBird birdMovement;
+
+        private VideoPlayer cachedVideoPlayer;
+        private float playerLostTimer;
+        private bool isPlayerPresent;
 
         private void Start()
         {
@@ -66,7 +86,28 @@ namespace KiBird.MainMenu
             if (menuVisualRoot != null) menuVisualRoot.SetActive(true);
             if (menuGameRoot != null) menuGameRoot.SetActive(false);
 
+            if (menuContentRoot == null && menuVisualRoot != null)
+            {
+                Transform contentTransform = menuVisualRoot.transform.Find("Content");
+                if (contentTransform != null) menuContentRoot = contentTransform.gameObject;
+            }
+
+            if (videoRoot == null && menuVisualRoot != null)
+            {
+                Transform videoTransform = menuVisualRoot.transform.Find("VideoPlayer");
+                if (videoTransform != null) videoRoot = videoTransform.gameObject;
+            }
+
+            if (videoRoot != null)
+            {
+                cachedVideoPlayer = videoRoot.GetComponentInChildren<VideoPlayer>(true);
+            }
+
             instructionMessage = promptText != null ? promptText.text : string.Empty;
+
+            // Détection initiale
+            isPlayerPresent = CheckRawPlayerPresent();
+            SetDisplayMode(isPlayerPresent);
         }
 
         /// <summary>
@@ -109,19 +150,99 @@ namespace KiBird.MainMenu
         {
             if (isStarting) return;
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+#if ENABLE_INPUT_SYSTEM
+            if (Keyboard.current != null && Keyboard.current.pKey.wasPressedThisFrame)
+            {
+                debugForcePlayerPresent = !debugForcePlayerPresent;
+            }
+#else
+            if (Input.GetKeyDown(KeyCode.P))
+            {
+                debugForcePlayerPresent = !debugForcePlayerPresent;
+            }
+#endif
+#endif
+
+            bool rawPlayerPresent = CheckRawPlayerPresent();
+
+            if (rawPlayerPresent)
+            {
+                playerLostTimer = 0f;
+                isPlayerPresent = true;
+            }
+            else
+            {
+                if (isPlayerPresent)
+                {
+                    playerLostTimer += Time.deltaTime;
+                    if (playerLostTimer >= playerLostGraceDuration)
+                    {
+                        isPlayerPresent = false;
+                    }
+                }
+            }
+
+            SetDisplayMode(isPlayerPresent);
+
+            if (!isPlayerPresent)
+            {
+                holdTimer = 0f;
+                if (startProgressFill != null) startProgressFill.fillAmount = 0f;
+                return;
+            }
+
             // Deux façons indépendantes de charger le démarrage : Espace, ou pose bras en T.
             bool charging = (inputProvider != null && inputProvider.IsGlideHeld) ||
                             (kinectInputProvider != null && kinectInputProvider.IsGlideHeld);
 
-            // Présence Kinect pour l'indicateur visuel uniquement, lue directement sur
-            // KinectInputSource (même source que KinectStartInputSource.IsGlideHeld en interne) :
-            // le clavier n'a pas de notion de "présence" distincte de la pose elle-même.
-            bool playerPresent = charging ||
-                (KinectInputSource.Instance != null && KinectInputSource.Instance.HasPlayer);
-
             UpdateStartProgress(charging);
             UpdatePrompt(charging);
-            UpdateTrackingStatus(playerPresent, charging);
+            UpdateTrackingStatus(true, charging);
+        }
+
+        private bool CheckRawPlayerPresent()
+        {
+            if (debugForcePlayerPresent) return true;
+
+            bool charging = (inputProvider != null && inputProvider.IsGlideHeld) ||
+                            (kinectInputProvider != null && kinectInputProvider.IsGlideHeld);
+
+            bool kinectHasPlayer = KinectInputSource.Instance != null && KinectInputSource.Instance.HasPlayer;
+
+            return charging || kinectHasPlayer;
+        }
+
+        private void SetDisplayMode(bool playerDetected)
+        {
+            if (videoRoot != null)
+            {
+                bool shouldShowVideo = !playerDetected;
+                if (videoRoot.activeSelf != shouldShowVideo)
+                {
+                    videoRoot.SetActive(shouldShowVideo);
+                }
+
+                if (cachedVideoPlayer != null)
+                {
+                    if (shouldShowVideo)
+                    {
+                        if (!cachedVideoPlayer.isPlaying) cachedVideoPlayer.Play();
+                    }
+                    else
+                    {
+                        if (cachedVideoPlayer.isPlaying) cachedVideoPlayer.Pause();
+                    }
+                }
+            }
+
+            if (menuContentRoot != null)
+            {
+                if (menuContentRoot.activeSelf != playerDetected)
+                {
+                    menuContentRoot.SetActive(playerDetected);
+                }
+            }
         }
 
         private void UpdatePrompt(bool charging)
@@ -187,6 +308,12 @@ namespace KiBird.MainMenu
         private void StartGame()
         {
             isStarting = true;
+            if (cachedVideoPlayer != null && cachedVideoPlayer.isPlaying)
+            {
+                cachedVideoPlayer.Stop();
+            }
+            if (videoRoot != null) videoRoot.SetActive(false);
+            if (menuContentRoot != null) menuContentRoot.SetActive(false);
             if (menuVisualRoot != null) menuVisualRoot.SetActive(false);
             if (menuGameRoot != null) menuGameRoot.SetActive(true);
 
