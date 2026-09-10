@@ -186,6 +186,17 @@ public class MoveBird : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Pourcentage de planage courant, de 0 (piqué, bras le long du corps) à 1 (plané plein,
+    /// bras tendus à l'horizontale). C'est la valeur affichée par la jauge "Plané" de
+    /// l'overlay F1, exposée ici pour que le HUD joueur puisse la montrer lui aussi.
+    ///
+    /// Sous Kinect, c'est la mesure envoyée par le bridge. Au clavier, elle est reconstruite à
+    /// partir du taux de chute appliqué : la jauge reste donc lisible pendant les tests et pour
+    /// les animateurs, sans avoir à brancher la Kinect.
+    /// </summary>
+    public float GlideRatio { get; private set; } = 1f;
+
     private void Awake()
     {
         CurrentScore = 0;
@@ -272,6 +283,8 @@ public class MoveBird : MonoBehaviour
         currentMinHeight = defaultMinHeight;
         UpdateAnimationSpeed();
 
+        GlideRatio = 1f;
+
         displayedScore = -1;
         RefreshScoreLabel();
 
@@ -309,6 +322,7 @@ public class MoveBird : MonoBehaviour
         UpdateBoundaries();
         Vector3 input = GetInput();
         input = EnforceBoundaryConstraints(input);
+        UpdateGlideRatio(input.y);
         Move(input);
         Bank(input);
         UpdateAnimation(input);
@@ -927,6 +941,25 @@ public class MoveBird : MonoBehaviour
             currentMaxHeight = defaultMaxHeight;
             currentMinHeight = defaultMinHeight;
         }
+    }
+
+    /// <summary>
+    /// Traduit la commande verticale effectivement appliquée en pourcentage de planage.
+    /// Calculé après EnforceBoundaryConstraints : le planage forcé sous le plafond d'altitude
+    /// se voit donc sur la jauge, ce qui explique au joueur pourquoi il ne monte plus.
+    /// </summary>
+    private void UpdateGlideRatio(float verticalInput)
+    {
+        if (IsKinectDriving)
+        {
+            GlideRatio = ActiveKinectSource.Glide;
+            return;
+        }
+
+        // Battement : l'oiseau gagne de l'altitude, les ailes sont au maximum de leur portance.
+        GlideRatio = verticalInput > glideSink
+            ? 1f
+            : Mathf.InverseLerp(diveSink, glideSink, verticalInput);
     }
 
     private Vector3 GetInput()
