@@ -5,11 +5,10 @@ permissions:
   checks: write
 
 on:
-  pull_request:
+  workflow_dispatch:
     branches:
       - 'releases/**'
       - 'main'
-      - 'ci'
 
 jobs:
   build:
