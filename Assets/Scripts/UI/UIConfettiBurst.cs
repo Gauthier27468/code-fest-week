@@ -4,9 +4,10 @@ using UnityEngine.UI;
 
 /// <summary>
 /// Confettis en Image UI (pas un ParticleSystem 3D) : garantit un rendu AU PREMIER PLAN,
-/// localisé à l'origine donnée. ConfettiEffect (ParticleSystem 3D rendu par la caméra) se
-/// retrouve toujours DERRIÈRE un Canvas Screen Space - Overlay, qui s'affiche après tout
-/// rendu caméra par construction — inutilisable ici, d'où cette variante 100% UI.
+/// localisé à l'origine donnée. ParticleBurst (utilisé pour HoopScore/BirdNestTrigger) est un
+/// ParticleSystem 3D rendu par la caméra, qui se retrouve toujours DERRIÈRE un Canvas Screen
+/// Space - Overlay, lequel s'affiche après tout rendu caméra par construction — inutilisable
+/// ici, d'où cette variante 100% UI.
 /// </summary>
 public class UIConfettiBurst : MonoBehaviour
 {

@@ -240,9 +240,9 @@ public class GameOverUI : MonoBehaviour
         if (scoreText != null) scoreText.color = Cream;
     }
 
-    // Confettis UI (pas le ParticleSystem 3D de ConfettiEffect/HoopScore : celui-ci serait
-    // rendu par la caméra donc toujours DERRIÈRE un Canvas Screen Space - Overlay). Centrés
-    // sur le texte "NOUVEAU RECORD !" et garantis au premier plan.
+    // Confettis UI (pas ParticleBurst, utilisé pour HoopScore/BirdNestTrigger : ce dernier est
+    // un ParticleSystem 3D rendu par la caméra, donc toujours DERRIÈRE un Canvas Screen Space -
+    // Overlay). Centrés sur le texte "NOUVEAU RECORD !" et garantis au premier plan.
     private void SpawnRecordConfetti()
     {
         UIConfettiBurst.SpawnBurst(statusText.rectTransform);
