@@ -24,11 +24,15 @@ namespace KiBird.FX
             public Color color;
             /// <summary>Dégradé appliqué sur la durée de vie. Null = couleur fixe.</summary>
             public Gradient gradient;
-            /// <summary>Rotation aléatoire au tir puis en continu (plumes qui virevoltent).</summary>
+            /// <summary>Couleur aléatoire tirée du dégradé par particule (confettis multicolores).</summary>
+            public bool randomColor;
+            /// <summary>Rotation aléatoire au tir puis en continu (plumes qui virevoltent, confettis).</summary>
             public bool spin;
+            /// <summary>Particules rectangulaires 3D (format confetti).</summary>
+            public bool size3D;
             /// <summary>Apparition/disparition progressive de la taille. Null = taille constante.</summary>
             public AnimationCurve sizeOverLifetime;
-            /// <summary>Matériau chargé depuis un dossier Resources. Vide = particule blanche.</summary>
+            /// <summary>Matériau chargé depuis un dossier Resources ou AssetDatabase. Vide = particule blanche.</summary>
             public string materialResource;
         }
 
@@ -55,21 +59,29 @@ namespace KiBird.FX
             materialResource = "M_Feather"
         };
 
-        /// <summary>Éclats dorés au franchissement d'un anneau.</summary>
-        public static Settings HoopSparkles => new Settings
+        /// <summary>Confettis multicolores au franchissement d'un anneau.</summary>
+        public static Settings HoopConfetti => new Settings
         {
             name = "HoopCollectFX",
-            lifetime = new Vector2(0.4f, 0.7f),
-            speed = new Vector2(3f, 6.5f),
-            size = new Vector2(0.12f, 0.3f),
-            minCount = 20,
-            maxCount = 35,
-            radius = 0.7f,
-            gravity = 0f,
-            duration = 0.4f,
-            destroyAfter = 1.0f,
-            color = new Color(1f, 0.85f, 0.2f, 1f)
+            lifetime = new Vector2(0.9f, 1.6f),
+            speed = new Vector2(4f, 8.5f),
+            size = new Vector2(0.12f, 0.24f),
+            minCount = 45,
+            maxCount = 70,
+            radius = 0.8f,
+            gravity = 0.35f,
+            duration = 0.5f,
+            destroyAfter = 2.5f,
+            gradient = BuildRainbowGradient(),
+            randomColor = true,
+            spin = true,
+            size3D = true,
+            sizeOverLifetime = BuildCurve((0f, 0.85f), (0.15f, 1f), (0.75f, 1f), (1f, 0.15f)),
+            materialResource = "M_Confetti"
         };
+
+        /// <summary>Éclats / confettis au franchissement d'un anneau (alias rétrocompatible).</summary>
+        public static Settings HoopSparkles => HoopConfetti;
 
         /// <summary>Confettis à l'arrivée dans le nid.</summary>
         public static Settings VictoryConfetti => new Settings
@@ -77,18 +89,19 @@ namespace KiBird.FX
             name = "VictoryConfetti",
             lifetime = new Vector2(1.5f, 2.5f),
             speed = new Vector2(3f, 8f),
-            size = new Vector2(0.15f, 0.35f),
-            minCount = 50,
-            maxCount = 80,
+            size = new Vector2(0.12f, 0.25f),
+            minCount = 60,
+            maxCount = 90,
             radius = 1.0f,
             gravity = 0.3f,
             duration = 1.0f,
             destroyAfter = 3.0f,
-            gradient = BuildGradient(
-                new[] { new Color(0.2f, 0.95f, 0.4f), new Color(1f, 0.85f, 0.2f), new Color(0.2f, 0.8f, 1f) },
-                new[] { 0f, 0.5f, 1f },
-                new[] { 1f, 0.8f, 0f },
-                new[] { 0f, 0.7f, 1f })
+            gradient = BuildRainbowGradient(),
+            randomColor = true,
+            spin = true,
+            size3D = true,
+            sizeOverLifetime = BuildCurve((0f, 0.85f), (0.15f, 1f), (0.75f, 1f), (1f, 0.15f)),
+            materialResource = "M_Confetti"
         };
 
         /// <summary>Instancie le préfab s'il y en a un, sinon construit l'effet décrit par settings.</summary>
@@ -110,23 +123,83 @@ namespace KiBird.FX
             fxObj.transform.position = position;
 
             ParticleSystem ps = fxObj.AddComponent<ParticleSystem>();
+            // Empêche l'erreur "Setting the duration while system is still playing is not supported"
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
             Material material = ResolveMaterial(s.materialResource);
+            var psr = fxObj.GetComponent<ParticleSystemRenderer>();
             if (material != null)
             {
-                fxObj.GetComponent<ParticleSystemRenderer>().material = material;
+                psr.material = material;
             }
+            psr.renderMode = ParticleSystemRenderMode.Billboard;
+            psr.sortMode = ParticleSystemSortMode.Distance;
 
             var main = ps.main;
             main.duration = s.duration;
             main.loop = false;
             main.startLifetime = new ParticleSystem.MinMaxCurve(s.lifetime.x, s.lifetime.y);
             main.startSpeed = new ParticleSystem.MinMaxCurve(s.speed.x, s.speed.y);
-            main.startSize = new ParticleSystem.MinMaxCurve(s.size.x, s.size.y);
+            if (s.size3D)
+            {
+                main.startSize3D = true;
+                main.startSizeX = new ParticleSystem.MinMaxCurve(s.size.x, s.size.y);
+                main.startSizeY = new ParticleSystem.MinMaxCurve(s.size.x * 2.2f, s.size.y * 2.2f);
+                main.startSizeZ = new ParticleSystem.MinMaxCurve(1f, 1f);
+            }
+            else
+            {
+                main.startSize = new ParticleSystem.MinMaxCurve(s.size.x, s.size.y);
+            }
             main.gravityModifier = s.gravity;
             main.simulationSpace = ParticleSystemSimulationSpace.World;
             main.stopAction = ParticleSystemStopAction.Destroy;
-            if (s.gradient == null) main.startColor = s.color;
-            if (s.spin) main.startRotation = new ParticleSystem.MinMaxCurve(0f, 360f * Mathf.Deg2Rad);
+
+            if (s.gradient != null)
+            {
+                if (s.randomColor)
+                {
+                    var minMaxGrad = new ParticleSystem.MinMaxGradient(s.gradient)
+                    {
+                        mode = ParticleSystemGradientMode.RandomColor
+                    };
+                    main.startColor = minMaxGrad;
+
+                    var col = ps.colorOverLifetime;
+                    col.enabled = true;
+                    var fadeGrad = new Gradient();
+                    fadeGrad.SetKeys(
+                        new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                        new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 0.75f), new GradientAlphaKey(0f, 1f) }
+                    );
+                    col.color = fadeGrad;
+                }
+                else
+                {
+                    var col = ps.colorOverLifetime;
+                    col.enabled = true;
+                    col.color = s.gradient;
+                }
+            }
+            else
+            {
+                main.startColor = s.color;
+            }
+
+            if (s.spin)
+            {
+                if (s.size3D)
+                {
+                    main.startRotation3D = true;
+                    main.startRotationX = new ParticleSystem.MinMaxCurve(0f, 360f * Mathf.Deg2Rad);
+                    main.startRotationY = new ParticleSystem.MinMaxCurve(0f, 360f * Mathf.Deg2Rad);
+                    main.startRotationZ = new ParticleSystem.MinMaxCurve(0f, 360f * Mathf.Deg2Rad);
+                }
+                else
+                {
+                    main.startRotation = new ParticleSystem.MinMaxCurve(0f, 360f * Mathf.Deg2Rad);
+                }
+            }
 
             var emission = ps.emission;
             emission.rateOverTime = 0;
@@ -139,18 +212,21 @@ namespace KiBird.FX
             shape.shapeType = ParticleSystemShapeType.Sphere;
             shape.radius = s.radius;
 
-            if (s.gradient != null)
-            {
-                var col = ps.colorOverLifetime;
-                col.enabled = true;
-                col.color = s.gradient;
-            }
-
             if (s.spin)
             {
                 var rot = ps.rotationOverLifetime;
                 rot.enabled = true;
-                rot.z = new ParticleSystem.MinMaxCurve(-150f * Mathf.Deg2Rad, 150f * Mathf.Deg2Rad);
+                if (s.size3D)
+                {
+                    rot.separateAxes = true;
+                    rot.x = new ParticleSystem.MinMaxCurve(-360f * Mathf.Deg2Rad, 360f * Mathf.Deg2Rad);
+                    rot.y = new ParticleSystem.MinMaxCurve(-360f * Mathf.Deg2Rad, 360f * Mathf.Deg2Rad);
+                    rot.z = new ParticleSystem.MinMaxCurve(-240f * Mathf.Deg2Rad, 240f * Mathf.Deg2Rad);
+                }
+                else
+                {
+                    rot.z = new ParticleSystem.MinMaxCurve(-150f * Mathf.Deg2Rad, 150f * Mathf.Deg2Rad);
+                }
             }
 
             if (s.sizeOverLifetime != null)
@@ -165,8 +241,8 @@ namespace KiBird.FX
         }
 
         /// <summary>
-        /// Matériau du dossier Resources, sinon un shader de particules non éclairé. Passer par
-        /// Resources et non AssetDatabase : ce dernier n'existe pas dans un build.
+        /// Matériau du dossier Resources, sinon du dossier Assets/Art/Generated en Éditeur,
+        /// sinon un shader de particules non éclairé double-face.
         /// </summary>
         private static Material ResolveMaterial(string resourceName)
         {
@@ -174,12 +250,24 @@ namespace KiBird.FX
             {
                 Material fromResources = Resources.Load<Material>(resourceName);
                 if (fromResources != null) return fromResources;
+
+#if UNITY_EDITOR
+                Material fromAssetDb = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>($"Assets/Art/Generated/{resourceName}.mat")
+                                    ?? UnityEditor.AssetDatabase.LoadAssetAtPath<Material>($"Assets/Art/Generated/Resources/{resourceName}.mat");
+                if (fromAssetDb != null) return fromAssetDb;
+#endif
             }
 
             Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
                          ?? Shader.Find("Particles/Standard Unlit")
                          ?? Shader.Find("Sprites/Default");
-            return shader != null ? new Material(shader) : null;
+            if (shader != null)
+            {
+                var mat = new Material(shader);
+                mat.SetInt("_Cull", 0); // Visible des deux côtés pour confettis
+                return mat;
+            }
+            return null;
         }
 
         private static Gradient BuildGradient(Color[] colors, float[] colorTimes,
@@ -200,6 +288,25 @@ namespace KiBird.FX
             var gradient = new Gradient();
             gradient.SetKeys(colorKeys, alphaKeys);
             return gradient;
+        }
+
+        private static Gradient BuildRainbowGradient()
+        {
+            return BuildGradient(
+                new[]
+                {
+                    new Color(1.0f, 0.15f, 0.22f), // Rouge vif
+                    new Color(1.0f, 0.52f, 0.05f), // Orange éclatant
+                    new Color(1.0f, 0.88f, 0.10f), // Jaune / Or
+                    new Color(0.12f, 0.92f, 0.36f), // Vert émeraude
+                    new Color(0.05f, 0.82f, 1.00f), // Cyan vibrant
+                    new Color(0.28f, 0.45f, 1.00f), // Bleu royal
+                    new Color(0.96f, 0.18f, 0.82f)  // Rose magenta
+                },
+                new[] { 0.00f, 0.16f, 0.33f, 0.50f, 0.67f, 0.83f, 1.00f },
+                new[] { 1.0f, 1.0f },
+                new[] { 0.0f, 1.0f }
+            );
         }
 
         private static AnimationCurve BuildCurve(params (float time, float value)[] keys)
