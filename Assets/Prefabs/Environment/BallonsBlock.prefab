@@ -243,7 +243,6 @@ Transform:
   - {fileID: 427745283676418648}
   - {fileID: 6484515242587403226}
   - {fileID: 6679013263277427177}
-  - {fileID: 5446969936600104665}
   - {fileID: 1810157639871207980}
   - {fileID: 2739507926702619773}
   - {fileID: 4630175847014609637}
@@ -994,7 +993,7 @@ MonoBehaviour:
   enableAscent: 1
   ascentSpeed: 0.3
   loopAscent: 0
-  maxAltitude: 2
+  maxAltitude: 1
   enableDrift: 1
   driftAmplitude: 0.5
   driftFrequency: 0.3
@@ -1189,7 +1188,7 @@ MonoBehaviour:
   enableAscent: 1
   ascentSpeed: 0.3
   loopAscent: 0
-  maxAltitude: 2
+  maxAltitude: 1
   enableDrift: 1
   driftAmplitude: 0.5
   driftFrequency: 0.3
@@ -1522,7 +1521,7 @@ MonoBehaviour:
   enableAscent: 1
   ascentSpeed: 0.3
   loopAscent: 0
-  maxAltitude: 2
+  maxAltitude: 1
   enableDrift: 1
   driftAmplitude: 0.5
   driftFrequency: 0.3
@@ -1830,7 +1829,7 @@ MonoBehaviour:
   enableAscent: 1
   ascentSpeed: 0.3
   loopAscent: 0
-  maxAltitude: 2
+  maxAltitude: 1
   enableDrift: 1
   driftAmplitude: 0.5
   driftFrequency: 0.3
@@ -2072,7 +2071,7 @@ MonoBehaviour:
   enableAscent: 1
   ascentSpeed: 0.3
   loopAscent: 0
-  maxAltitude: 2
+  maxAltitude: 1
   enableDrift: 1
   driftAmplitude: 0.5
   driftFrequency: 0.3
@@ -2550,72 +2549,6 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 4917242437301349843, guid: d559d0654d8a203419aa3a17350cee76, type: 3}
   m_PrefabInstance: {fileID: 8262498290100110830}
   m_PrefabAsset: {fileID: 0}
---- !u!1001 &8288012381234621458
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 4613507226181742623}
-    m_Modifications:
-    - target: {fileID: 4076717627030934219, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: 3.5604303
-      objectReference: {fileID: 0}
-    - target: {fileID: 4076717627030934219, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 8.25
-      objectReference: {fileID: 0}
-    - target: {fileID: 4076717627030934219, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 19.028572
-      objectReference: {fileID: 0}
-    - target: {fileID: 4076717627030934219, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
-      propertyPath: m_LocalRotation.w
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 4076717627030934219, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: -0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4076717627030934219, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
-      propertyPath: m_LocalRotation.y
-      value: -0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4076717627030934219, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
-      propertyPath: m_LocalRotation.z
-      value: -0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4076717627030934219, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4076717627030934219, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4076717627030934219, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 5534612148462883475, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
-      propertyPath: m_Name
-      value: V1_HotAirBalloon_0
-      objectReference: {fileID: 0}
-    - target: {fileID: 5534612148462883475, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
-      propertyPath: m_IsActive
-      value: 0
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
---- !u!4 &5446969936600104665 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: 4076717627030934219, guid: 30a71a9bd3d475e4e888ec6b17c6c558, type: 3}
-  m_PrefabInstance: {fileID: 8288012381234621458}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &8714343894660223569
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2870,7 +2803,7 @@ MonoBehaviour:
   enableAscent: 1
   ascentSpeed: 0.3
   loopAscent: 0
-  maxAltitude: 2
+  maxAltitude: 1
   enableDrift: 1
   driftAmplitude: 0.5
   driftFrequency: 0.3
