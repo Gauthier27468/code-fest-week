@@ -49,6 +49,9 @@ public class GameOverUI : MonoBehaviour
     public Color victoryOverlay = new Color(0.015f, 0.08f, 0.025f, 0.65f);
     public Color victorySubPanel = new Color(0.055f, 0.14f, 0.045f, 0.86f);
 
+    [Header("Nouveau Record")]
+    public Color newRecordColor = new Color(1f, 0.85f, 0.15f);
+
     [Header("Sons")]
     public AudioSource gameOverSound;
     public AudioClip defeatSound;
@@ -113,14 +116,28 @@ public class GameOverUI : MonoBehaviour
     public void ShowGameOver(bool victory = false)
     {
         if (isGameOverActive || rootPanel == null) return;
+        DisplayResult(victory, forceNewRecord: false);
+    }
 
+    // Clic droit sur le composant (en Play mode) > "Debug : Afficher Nouveau Record" pour
+    // prévisualiser le panneau sans avoir à rejouer/battre le record à chaque fois.
+    [ContextMenu("Debug : Afficher Nouveau Record")]
+    private void DebugShowNewRecord()
+    {
+        if (rootPanel == null) return;
+        isGameOverActive = false;
+        DisplayResult(false, forceNewRecord: true);
+    }
+
+    private void DisplayResult(bool victory, bool forceNewRecord)
+    {
         isGameOverActive = true;
         countdownTimer = Mathf.Max(0.1f, autoResetDelay);
         rootPanel.SetActive(true);
 
         int currentScore = MoveBird.CurrentScore;
         int bestScore = ScoreManager.GetBestScore();
-        bool isNewRecord = currentScore > 0 && currentScore >= bestScore;
+        bool isNewRecord = forceNewRecord || (currentScore > 0 && currentScore >= bestScore);
 
         ApplyTheme(victory, isNewRecord);
         if (scoreText != null) scoreText.text = $"{currentScore:N0} PTS";
@@ -157,12 +174,22 @@ public class GameOverUI : MonoBehaviour
         Color accent = victory ? victoryAccent : defeatAccent;
         Color subPanel = victory ? victorySubPanel : defeatSubPanel;
 
+        // Uniquement l'annonce de nouveau record : pas de texte "FIN DU VOL" / "PARCOURS
+        // TERMINÉ" générique (retiré de la scène), donc on masque statusText le reste du temps
+        // plutôt que de lui laisser un texte par défaut.
         if (statusText != null)
         {
-            statusText.text = isNewRecord
-                ? "NOUVEAU RECORD !"
-                : victory ? "PARCOURS TERMINÉ" : "FIN DU VOL";
-            statusText.color = isNewRecord ? defeatAccent : Moss;
+            statusText.gameObject.SetActive(isNewRecord);
+            if (isNewRecord)
+            {
+                statusText.text = "NOUVEAU RECORD !";
+                statusText.color = newRecordColor;
+
+                if (statusText.GetComponent<PulseEffect>() == null)
+                {
+                    statusText.gameObject.AddComponent<PulseEffect>();
+                }
+            }
         }
         if (titleText != null)
         {
