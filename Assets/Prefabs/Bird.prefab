@@ -151,6 +151,7 @@ GameObject:
   - component: {fileID: 956003524011680185}
   - component: {fileID: 4533687907430522642}
   - component: {fileID: 7237330380648563446}
+  - component: {fileID: 7461930528114553271}
   m_Layer: 6
   m_Name: Bird
   m_TagString: Player
@@ -678,3 +679,30 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1897518661389716035}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &7461930528114553271
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2362153942084297668}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a5be5ec39f26bbbc04ab15e9b338d61, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::KiBird.FX.WingWindFX
+  leftWingTip: {fileID: 0}
+  rightWingTip: {fileID: 0}
+  leftWingTipName: Bird_LeftWing_Tip
+  rightWingTipName: Bird_RightWing_Tip
+  enableWingtipVortices: 1
+  trailTime: 0.35
+  trailWidth: 0.13
+  trailColor: {r: 0.87, g: 0.94, b: 1, a: 0.55}
+  flapSpeedReference: 3
+  autoCalibrateFlap: 1
+  referenceForwardSpeed: 12
+  referenceTurnSpeed: 6
+  referenceDiveSpeed: 5
+  minVisibleSpeed: 1.5
+  intensitySmoothing: 7

@@ -244,7 +244,7 @@ namespace KiBird.FX
         /// Matériau du dossier Resources, sinon du dossier Assets/Art/Generated en Éditeur,
         /// sinon un shader de particules non éclairé double-face.
         /// </summary>
-        private static Material ResolveMaterial(string resourceName)
+        public static Material ResolveMaterial(string resourceName)
         {
             if (!string.IsNullOrEmpty(resourceName))
             {
@@ -261,13 +261,23 @@ namespace KiBird.FX
             Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
                          ?? Shader.Find("Particles/Standard Unlit")
                          ?? Shader.Find("Sprites/Default");
-            if (shader != null)
-            {
-                var mat = new Material(shader);
-                mat.SetInt("_Cull", 0); // Visible des deux côtés pour confettis
-                return mat;
-            }
-            return null;
+            if (shader == null) return null;
+
+            var mat = new Material(shader);
+            mat.SetInt("_Cull", 0); // Visible des deux côtés pour confettis
+
+            // Le shader URP naît opaque et sans texture : tel quel, un effet privé de son matériau
+            // Resources s'afficherait en quads blancs pleins — des « cubes » dans le ciel — au lieu
+            // de disparaître discrètement. On force donc le mélange alpha sur ce filet de secours.
+            mat.SetOverrideTag("RenderType", "Transparent");
+            mat.SetFloat("_Surface", 1f);
+            mat.SetFloat("_Blend", 0f);
+            mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            mat.SetFloat("_ZWrite", 0f);
+            mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            return mat;
         }
 
         private static Gradient BuildGradient(Color[] colors, float[] colorTimes,
