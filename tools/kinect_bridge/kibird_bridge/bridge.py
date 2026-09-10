@@ -160,6 +160,9 @@ def run_live(args: argparse.Namespace) -> None:
     print("Kinect initialisee.")
     if bg_filter_enabled:
         print(f"Filtre de fond IR actif : tout ce qui est au-dela de {args.bg_max_distance:.1f}m est masque.")
+        if args.num_poses > 1:
+            print(f"  (--num-poses {args.num_poses} : MediaPipe cherche plusieurs poses, ~25 ms/frame "
+                  f"de plus. 1 suffit tant que le filtre isole bien le joueur.)")
     else:
         print("Filtre de fond IR desactive.")
 
@@ -306,7 +309,11 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7777)
     parser.add_argument("--model", default=str(DEFAULT_MODEL_PATH), help="Chemin du modele .task PoseLandmarker")
-    parser.add_argument("--num-poses", type=int, default=3, help="Nombre max de personnes detectees par MediaPipe")
+    parser.add_argument("--num-poses", type=int, default=1,
+                        help="Nombre max de personnes detectees par MediaPipe. 1 par defaut : le "
+                             "filtre de fond ne laisse deja qu'une personne dans l'image, et "
+                             "au-dela de 1 MediaPipe perd sa fast-path de suivi (31 ms -> 56 ms "
+                             "par frame). Passer a 2 si deux visiteurs sont confondus.")
     parser.add_argument("--mirror", action=argparse.BooleanOptionalAction, default=False,
                         help="Inverse gauche/droite. Le mapping par defaut est deja naturel : "
                              "n'active ce flag que si le ressenti est inverse a l'installation.")

@@ -41,7 +41,14 @@ class PoseEstimator:
     Le choix de la personne a suivre est delegue a tracking.PlayerTracker.
     """
 
-    def __init__(self, model_path: str | Path, num_poses: int = 3) -> None:
+    def __init__(self, model_path: str | Path, num_poses: int = 1) -> None:
+        # num_poses=1 par défaut : au-delà, MediaPipe relance son détecteur de personnes à
+        # chaque frame au lieu de réutiliser la ROI de la frame précédente — mesuré à 56 ms
+        # par frame contre 31 ms, soit plus que le budget complet de 33 ms à 30 Hz. Le filtre
+        # de profondeur (segmentation.py) ne laissant qu'une personne dans l'image, chercher
+        # plusieurs poses est devenu redondant.
+        # Import différé : permet d'utiliser capture.py/tracking.py/gestures.py/protocol.py
+        # sans dépendre de mediapipe (utile tant que le blocage ci-dessus n'est pas résolu).
         import mediapipe as mp
         from mediapipe.tasks import python as mp_python
         from mediapipe.tasks.python import vision

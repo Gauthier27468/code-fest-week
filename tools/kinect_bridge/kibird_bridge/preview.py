@@ -9,8 +9,8 @@ l'aveugle depuis la ligne de statut console.
 fenêtre par-dessus le jeu. Ne pas l'activer pendant une JPO.
 
 ⚠️ Nécessite un OpenCV avec HighGUI, donc le paquet `opencv-python` et NON
-`opencv-python-headless` (voir requirements.txt) : le wheel headless est compilé sans support
-de fenêtre et `imshow` y lève une `cv2.error`. Le message d'erreur ci-dessous le dit
+`opencv-python-headless` (extra `preview` du pyproject) : le wheel headless est compilé sans
+support de fenêtre et `imshow` y lève une `cv2.error`. Le message d'erreur ci-dessous le dit
 explicitement plutôt que de laisser remonter un traceback OpenCV illisible.
 """
 from __future__ import annotations
