@@ -48,6 +48,7 @@ namespace KiBird.MainMenu
 
         private void Start()
         {
+            ResolveTrackingStatusReferences();
             RefreshScores();
             if (playerSilhouette != null) playerSilhouette.ApplyGlidePose();
 
@@ -66,6 +67,42 @@ namespace KiBird.MainMenu
             if (menuGameRoot != null) menuGameRoot.SetActive(false);
 
             instructionMessage = promptText != null ? promptText.text : string.Empty;
+        }
+
+        /// <summary>
+        /// Garde l'indicateur fonctionnel si ses references ont ete oubliees dans l'Inspector.
+        /// La recherche reste limitee au menu et ne s'execute qu'une fois au demarrage.
+        /// </summary>
+        private void ResolveTrackingStatusReferences()
+        {
+            if (menuVisualRoot == null ||
+                (trackingStatusText != null && trackingStatusDot != null)) return;
+
+            if (trackingStatusText == null)
+            {
+                foreach (Text text in menuVisualRoot.GetComponentsInChildren<Text>(true))
+                {
+                    if (text.name != "StatusText") continue;
+                    trackingStatusText = text;
+                    break;
+                }
+            }
+
+            if (trackingStatusDot == null)
+            {
+                foreach (Image image in menuVisualRoot.GetComponentsInChildren<Image>(true))
+                {
+                    if (image.name != "StatusDot") continue;
+                    trackingStatusDot = image;
+                    break;
+                }
+            }
+
+            if (trackingStatusText == null)
+            {
+                Debug.LogWarning("[MenuController] StatusText introuvable dans le menu : " +
+                                 "l'etat de detection ne pourra pas etre affiche.");
+            }
         }
 
         private void Update()

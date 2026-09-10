@@ -29,11 +29,6 @@ CALIBRATION_HOLD_S = 3.0
 AUTOCENTER_MIN_VISIBILITY = 0.5
 TARGET_HZ = 30.0
 
-# Juste apres l'ouverture du device USB, sync_get_video() renvoie parfois None au premier appel.
-KINECT_INIT_MAX_ATTEMPTS = 4
-KINECT_INIT_RETRY_DELAY_S = 1.5
-
-
 def _hip_mid_pixel(skeleton: dict, width: int, height: int) -> tuple[int, int, float, float]:
     lx, ly = skeleton["L_HIP"].x, skeleton["L_HIP"].y
     rx, ry = skeleton["R_HIP"].x, skeleton["R_HIP"].y
@@ -42,21 +37,22 @@ def _hip_mid_pixel(skeleton: dict, width: int, height: int) -> tuple[int, int, f
 
 
 def _select_front_skeleton(
-    skeletons: list[dict], capture, depth_mm, width: int, height: int,
+    skeletons: list[dict], capture, frame,
 ) -> tuple[dict | None, float, float | None, float | None]:
-    """Retient le squelette le plus proche de la Kinect.
+    """Retient le squelette dont la distance mesuree/estimee est la plus faible.
 
-    MediaPipe trie ses detections par proeminence dans l'image RGB, pas par profondeur :
-    un passant mieux cadre peut passer devant le joueur. On departage sur la vraie profondeur.
+    La Kinect utilise sa profondeur IR. La webcam estime la distance avec la largeur apparente
+    des epaules ; c'est moins precis, mais conserve la zone et la commande avancer/reculer.
     Retourne (squelette, distance_m, hip_x, hip_y) ; distance_m vaut 0.0 si aucune profondeur
     valide, auquel cas on retombe sur la detection la plus proeminente.
     """
+    width, height = frame.rgb.shape[1], frame.rgb.shape[0]
     best_skeleton = None
     best_distance = None
     best_hip = (None, None)
     for skeleton in skeletons:
         px, py, hip_x, hip_y = _hip_mid_pixel(skeleton, width, height)
-        distance = capture.median_depth_at(depth_mm, px, py)
+        distance = capture.distance_for_skeleton(skeleton, frame)
         if distance <= 0.0:
             continue
         if best_distance is None or distance < best_distance:
@@ -108,7 +104,7 @@ def _build_packet(
     )
 
 
-def _grab_first_frame(capture, timeout_s: float = 8.0):
+def _grab_first_frame(capture, timeout_s: float):
     """Capture la premiere frame avec un chien de garde.
 
     sync_get_video() peut se bloquer indefiniment quand le device USB est dans un etat bancal :
@@ -116,7 +112,7 @@ def _grab_first_frame(capture, timeout_s: float = 8.0):
     """
     import threading
 
-    from .capture import KinectUnavailableError
+    from .capture import CaptureUnavailableError
 
     result: dict = {}
 
@@ -131,18 +127,57 @@ def _grab_first_frame(capture, timeout_s: float = 8.0):
     t.join(timeout_s)
 
     if t.is_alive():
-        raise KinectUnavailableError(
-            f"La Kinect ne renvoie aucune image (bloquee depuis {timeout_s:.0f}s).\n"
-            "  La camera est detectee mais le flux ne demarre pas.\n"
-            "  -> Debranche puis rebranche le cable USB de la Kinect, et relance."
+        raise CaptureUnavailableError(
+            f"La source {capture.source_name} ne renvoie aucune image "
+            f"(bloquee depuis {timeout_s:.0f}s)."
         )
     if "error" in result:
         raise result["error"]
     return result["frame"]
 
 
+def _create_capture(kind: str, args: argparse.Namespace):
+    from .capture import KinectCapture, WebcamCapture
+
+    if kind == "kinect":
+        return KinectCapture()
+    return WebcamCapture(
+        device=args.webcam_device,
+        width=args.webcam_width,
+        height=args.webcam_height,
+        fps=args.webcam_fps,
+        horizontal_fov_deg=args.webcam_horizontal_fov_deg,
+        shoulder_width_m=args.estimated_shoulder_width_m,
+    )
+
+
+def _open_capture(kind: str, args: argparse.Namespace):
+    """Construit une source et valide son premier frame, avec retries pour la Kinect."""
+    from .capture import CaptureUnavailableError
+
+    attempts = args.kinect_init_attempts if kind == "kinect" else 1
+    last_error: CaptureUnavailableError | None = None
+    capture = None
+    for attempt in range(1, attempts + 1):
+        capture = _create_capture(kind, args)
+        try:
+            first_frame = _grab_first_frame(capture, args.kinect_init_timeout_seconds)
+            return capture, first_frame
+        except CaptureUnavailableError as exc:
+            last_error = exc
+            capture.close()
+            if attempt < attempts:
+                print(
+                    f"\n[{kind}] tentative {attempt}/{attempts} sans image, nouvel essai "
+                    f"dans {args.kinect_retry_delay_seconds:.1f}s...",
+                    file=sys.stderr,
+                )
+                time.sleep(args.kinect_retry_delay_seconds)
+    raise last_error or CaptureUnavailableError(f"Source {kind} indisponible.")
+
+
 def run_live(args: argparse.Namespace) -> None:
-    from .capture import KinectCapture, KinectUnavailableError
+    from .capture import CaptureUnavailableError, kinect_is_connected
     from .pose import PoseEstimator
     from .segmentation import remove_background
 
@@ -156,11 +191,27 @@ def run_live(args: argparse.Namespace) -> None:
 
     print(f"Chargement du modele {args.model} ...")
     pose_estimator = PoseEstimator(args.model, num_poses=args.num_poses)
-    capture = KinectCapture()
-    # La depth de capture.py est toujours DEPTH_REGISTERED, donc alignee sur la RGB :
-    # le masque peut etre applique tel quel (cf. segmentation.py).
-    bg_filter_enabled = args.bg_filter
-    print("Kinect initialisee.")
+    preferred = args.capture_mode
+    if preferred == "auto":
+        preferred = "kinect" if kinect_is_connected() else "webcam"
+        if preferred == "webcam":
+            print("Aucune Kinect detectee sur le bus USB : fallback webcam.")
+
+    print(f"Initialisation de la source {preferred} ...")
+    try:
+        capture, first_frame = _open_capture(preferred, args)
+    except CaptureUnavailableError as exc:
+        if args.capture_mode != "auto" or preferred == "webcam":
+            pose_estimator.close()
+            raise
+        print(f"\nKinect inutilisable ({exc})\nFallback webcam ...", file=sys.stderr)
+        capture, first_frame = _open_capture("webcam", args)
+
+    print(f"Source active : {capture.source_name}.")
+    # Le filtre de fond necessite la profondeur registered de la Kinect.
+    bg_filter_enabled = args.bg_filter and capture.has_depth
+    if args.bg_filter and not capture.has_depth:
+        print("Filtre de fond IR ignore en mode webcam (aucune profondeur disponible).")
     if bg_filter_enabled:
         print(f"Filtre de fond IR actif : tout ce qui est au-dela de {args.bg_max_distance:.1f}m est masque.")
         if args.num_poses > 1:
@@ -180,27 +231,6 @@ def run_live(args: argparse.Namespace) -> None:
     frame_period = 1.0 / TARGET_HZ
     last_t = time.time()
 
-    print("Attente de la premiere image ...", flush=True)
-    first_frame = None
-    init_error: KinectUnavailableError | None = None
-    for attempt in range(1, KINECT_INIT_MAX_ATTEMPTS + 1):
-        try:
-            first_frame = _grab_first_frame(capture)
-            init_error = None
-            break
-        except KinectUnavailableError as exc:
-            init_error = exc
-            if attempt < KINECT_INIT_MAX_ATTEMPTS:
-                print(
-                    f"\n[Kinect] tentative {attempt}/{KINECT_INIT_MAX_ATTEMPTS} sans image, "
-                    f"nouvel essai dans {KINECT_INIT_RETRY_DELAY_S:.1f}s...",
-                    file=sys.stderr,
-                )
-                capture.close()
-                time.sleep(KINECT_INIT_RETRY_DELAY_S)
-                capture = KinectCapture()
-    if init_error is not None:
-        raise init_error
     print("Flux video OK.")
 
     if preview is not None:
@@ -227,7 +257,7 @@ def run_live(args: argparse.Namespace) -> None:
             )
             skeletons = pose_estimator.detect(rgb_for_pose)
             candidate, distance, hip_x, hip_y = _select_front_skeleton(
-                skeletons, capture, frame.depth_mm, frame.rgb.shape[1], frame.rgb.shape[0],
+                skeletons, capture, frame,
             )
 
             tracking_result = tracker.update(distance, hip_x, hip_y, now=now)
@@ -257,7 +287,7 @@ def run_live(args: argparse.Namespace) -> None:
                 gesture_out = GestureOutput(lean=0.0, lift=0.0, throttle=0.0, glide=0.0)
                 glide_hold_start = None
 
-            if args.auto_center:
+            if args.auto_center and capture.has_motor:
                 head = candidate.get("NOSE") if candidate is not None else None
                 if head is not None and head.visibility >= AUTOCENTER_MIN_VISIBILITY:
                     autocenter_focus((head.x, head.y))
@@ -315,38 +345,65 @@ def run_live(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    from .config import ConfigError, load_or_create
+
+    # En execution depuis les sources : bridge.py -> kibird_bridge -> kinect_bridge -> tools
+    # -> racine Unity. Le launcher passe de toute facon un chemin absolu dans le build gele.
+    default_config_path = Path(__file__).resolve().parents[3] / "kibird-config.toml"
+    config_parser = argparse.ArgumentParser(add_help=False)
+    config_parser.add_argument("--config", default=str(default_config_path))
+    config_args, _ = config_parser.parse_known_args()
+    try:
+        config, created = load_or_create(config_args.config)
+    except ConfigError as exc:
+        print(f"\nConfiguration invalide : {exc}\n", file=sys.stderr)
+        raise SystemExit(2)
+    config_path = Path(config_args.config).expanduser().resolve()
+    print(f"Configuration {'creee' if created else 'chargee'} : {config_path}")
+
+    parser = argparse.ArgumentParser(description=__doc__, parents=[config_parser])
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7777)
     parser.add_argument("--model", default=str(DEFAULT_MODEL_PATH), help="Chemin du modele .task PoseLandmarker")
-    parser.add_argument("--num-poses", type=int, default=1,
+    parser.add_argument("--capture-mode", choices=("auto", "kinect", "webcam"), default=config.capture_mode,
+                        help="Source video. Surcharge [capture].mode du fichier de configuration")
+    parser.add_argument("--webcam-device", type=int, default=config.webcam_device)
+    parser.add_argument("--webcam-width", type=int, default=config.webcam_width)
+    parser.add_argument("--webcam-height", type=int, default=config.webcam_height)
+    parser.add_argument("--webcam-fps", type=float, default=config.webcam_fps)
+    parser.add_argument("--webcam-horizontal-fov-deg", type=float, default=config.webcam_horizontal_fov_deg)
+    parser.add_argument("--estimated-shoulder-width-m", type=float, default=config.estimated_shoulder_width_m)
+    parser.add_argument("--kinect-init-attempts", type=int, default=config.kinect_init_attempts)
+    parser.add_argument("--kinect-init-timeout-seconds", type=float, default=config.kinect_init_timeout_seconds)
+    parser.add_argument("--kinect-retry-delay-seconds", type=float, default=config.kinect_retry_delay_seconds)
+    parser.add_argument("--num-poses", type=int, default=config.num_poses,
                         help="Nombre max de personnes detectees par MediaPipe. 1 par defaut : le "
                              "filtre de fond ne laisse deja qu'une personne dans l'image, et "
                              "au-dela de 1 MediaPipe perd sa fast-path de suivi (31 ms -> 56 ms "
                              "par frame). Passer a 2 si deux visiteurs sont confondus.")
-    parser.add_argument("--mirror", action=argparse.BooleanOptionalAction, default=False,
+    parser.add_argument("--mirror", action=argparse.BooleanOptionalAction, default=config.mirror,
                         help="Inverse gauche/droite. Le mapping par defaut est deja naturel : "
                              "n'active ce flag que si le ressenti est inverse a l'installation.")
-    parser.add_argument("--bg-filter", action=argparse.BooleanOptionalAction, default=True,
+    parser.add_argument("--bg-filter", action=argparse.BooleanOptionalAction, default=config.background_filter,
                         help="Masque le fond au-dela de --bg-max-distance avec la profondeur IR "
                              "avant d'envoyer l'image a MediaPipe")
-    parser.add_argument("--bg-max-distance", type=float, default=2.0,
+    parser.add_argument("--bg-max-distance", type=float, default=config.background_max_distance_m,
                         help="Distance (m) au-dela de laquelle les pixels sont noircis")
-    parser.add_argument("--preview", action="store_true",
+    parser.add_argument("--preview", action=argparse.BooleanOptionalAction, default=config.preview,
                         help="Ouvre une fenetre camera avec overlay du squelette MediaPipe et des "
                              "commandes deduites (debug/reglage ; necessite opencv-python non-headless)")
-    parser.add_argument("--preview-scale", type=float, default=1.0,
+    parser.add_argument("--preview-scale", type=float, default=config.preview_scale,
                         help="Facteur d'echelle de la fenetre --preview (ex. 0.5 pour une demi-taille)")
-    parser.add_argument("--min-distance", type=float, default=1.0)
-    parser.add_argument("--max-distance", type=float, default=2.0)
-    parser.add_argument("--auto-center", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--min-distance", type=float, default=config.min_distance_m)
+    parser.add_argument("--max-distance", type=float, default=config.max_distance_m)
+    parser.add_argument("--auto-center", action=argparse.BooleanOptionalAction, default=config.auto_center)
     args = parser.parse_args()
 
-    from .capture import KinectUnavailableError
+    from .capture import CaptureUnavailableError
 
     try:
         run_live(args)
-    except KinectUnavailableError as exc:
+    except CaptureUnavailableError as exc:
         # Message destine a un animateur, pas a un developpeur : pas de traceback,
         # et un code de sortie distinct pour un script de supervision.
         print(f"\n{exc}\n", file=sys.stderr)

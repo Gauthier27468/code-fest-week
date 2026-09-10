@@ -18,6 +18,7 @@ public class KinectBridgeBuildStep : IPostprocessBuildWithReport
     private const string SkipEnvVar = "KIBIRD_SKIP_BRIDGE_BUILD";
     private const string BuildScriptRelativePath = "tools/kinect_bridge/build_bridge.sh";
     private const string DestFolderName = "kinect_bridge";
+    private const string ConfigFileName = "kibird-config.toml";
 
     // Assez large pour une compilation à froid (modèle à télécharger, venv à créer).
     private const int TimeoutMs = 10 * 60 * 1000;
@@ -64,6 +65,18 @@ public class KinectBridgeBuildStep : IPostprocessBuildWithReport
 
         Debug.Log($"[KinectBridge] Compilation du bridge vers {destination} (~20 s)...");
         RunBuildScript(buildScript, destination);
+        CopyConfigNextToBuild(projectRoot, report.summary.outputPath);
+    }
+
+    private static void CopyConfigNextToBuild(string projectRoot, string outputPath)
+    {
+        string source = Path.Combine(projectRoot, ConfigFileName);
+        string buildDir = Path.GetDirectoryName(outputPath);
+        if (!File.Exists(source) || buildDir == null) return;
+
+        string destination = Path.Combine(buildDir, ConfigFileName);
+        File.Copy(source, destination, true);
+        Debug.Log($"[KinectBridge] Configuration copiee vers {destination}.");
     }
 
     /// <summary>Déduit du chemin de l'exécutable produit : Unity nomme le dossier de données

@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# Lance le bridge Kinect -> Unity avec un environnement uv prêt à l'emploi.
+# Lance le bridge Kinect/webcam -> Unity avec un environnement uv prêt à l'emploi.
 #
 # `uv sync` suffit : freenect est une vraie dépendance du projet (compilée dans le venv depuis
 # les sources), plus besoin de --system-site-packages pour aller chercher le binding système.
 # Prérequis machine : un compilateur C et les headers libfreenect (paquet `libfreenect`).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
+
+if ! command -v uv >/dev/null 2>&1; then
+    echo "Erreur : uv est introuvable. Installe-le puis relance ce script." >&2
+    exit 1
+fi
 
 uv sync --quiet
 

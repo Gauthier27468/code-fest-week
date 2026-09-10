@@ -77,6 +77,8 @@ public class KinectInputSource : MonoBehaviour
     private readonly Joint[] _currentJoints = new Joint[JointCount];
     private float _lastPacketTime = float.NegativeInfinity;
     private float _latencyMs;
+    private bool _hasLoggedFirstPacket;
+    private bool _hasLoggedFirstPlayerPacket;
 
     private Socket _socket;
     private Thread _thread;
@@ -114,13 +116,46 @@ public class KinectInputSource : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void AutoCreate()
     {
-        if (!AutoBootstrap || Instance != null) return;
+        if (!AutoBootstrap) return;
+
+        // Avec "Enter Play Mode" sans reload de domaine/scene, l'objet DontDestroyOnLoad peut
+        // encore exister alors qu'OnApplicationQuit a ferme son socket au Play precedent.
+        // OnEnable n'est pas rejoue dans ce cas : il faut rearmer explicitement le recepteur.
+        if (Instance != null)
+        {
+            Instance.StartReceiver();
+            return;
+        }
 
         var go = new GameObject("KinectInput (auto)");
         go.AddComponent<KinectInputSource>();
         go.AddComponent<KinectDebugOverlay>().visible = false;
         DontDestroyOnLoad(go);
     }
+
+#if UNITY_EDITOR
+    // Filet de securite specifique a l'editeur quand Reload Domain ET Reload Scene sont
+    // desactives. Selon l'etat conserve par une session Play precedente, le GameObject
+    // persistant peut ne recevoir ni Awake ni OnEnable au Play suivant.
+    [UnityEditor.InitializeOnLoadMethod]
+    private static void RegisterEditorPlayModeBootstrap()
+    {
+        UnityEditor.EditorApplication.playModeStateChanged -= OnEditorPlayModeChanged;
+        UnityEditor.EditorApplication.playModeStateChanged += OnEditorPlayModeChanged;
+    }
+
+    private static void OnEditorPlayModeChanged(UnityEditor.PlayModeStateChange state)
+    {
+        if (state == UnityEditor.PlayModeStateChange.EnteredPlayMode)
+        {
+            AutoCreate();
+        }
+        else if (state == UnityEditor.PlayModeStateChange.ExitingPlayMode && Instance != null)
+        {
+            Instance.StopReceiver();
+        }
+    }
+#endif
 
     private void Awake()
     {
@@ -180,9 +215,17 @@ public class KinectInputSource : MonoBehaviour
             _hasPending = false;
         }
 
+        _current = default;
+        Array.Clear(_currentJoints, 0, _currentJoints.Length);
+        _lastPacketTime = float.NegativeInfinity;
+        _latencyMs = 0f;
+        _hasLoggedFirstPacket = false;
+        _hasLoggedFirstPlayerPacket = false;
+
         _running = true;
         _thread = new Thread(ReceiveLoop) { IsBackground = true, Name = "KinectUdpReceiver" };
         _thread.Start();
+        Debug.Log($"[KinectInput] Recepteur UDP actif sur 127.0.0.1:{port}.");
     }
 
     private void StopReceiver()
@@ -289,5 +332,17 @@ public class KinectInputSource : MonoBehaviour
         }
 
         _lastPacketTime = Time.realtimeSinceStartup;
+        if (!_hasLoggedFirstPacket)
+        {
+            _hasLoggedFirstPacket = true;
+            Debug.Log($"[KinectInput] Premier paquet UDP recu (seq={_current.Seq}, " +
+                      $"joueur={_current.PlayerPresent}, zone={_current.InZone}).");
+        }
+        if (!_hasLoggedFirstPlayerPacket && _current.PlayerPresent && _current.InZone)
+        {
+            _hasLoggedFirstPlayerPacket = true;
+            Debug.Log($"[KinectInput] Joueur actif recu par Unity " +
+                      $"(distance={_current.Distance:0.00}m, confiance={_current.Confidence:0.00}).");
+        }
     }
 }

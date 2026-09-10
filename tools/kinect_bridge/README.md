@@ -10,7 +10,46 @@ Capture Kinect 1414 → détection de pose → verrouillage joueur → traductio
 ./run_bridge.sh --mirror     # si le ressenti gauche/droite est inversé à l'installation
 ```
 
-Sans Kinect, le jeu reste entièrement pilotable au clavier : voir
+Sous Windows, le lanceur équivalent est :
+
+```powershell
+.\run_bridge.ps1
+```
+
+Il utilise directement `uv sync` et ne contient aucun chemin de Python codé en dur. Le mode
+webcam ne dépend pas de `freenect`. La Kinect sous Windows reste un cas particulier : elle
+nécessite un binding natif `freenect` construit et installé manuellement dans le `.venv` ; le
+déploiement Kinect officiellement pris en charge par le projet reste le build Linux.
+
+## Configuration de déploiement
+
+Le jeu lit `kibird-config.toml` à côté de son exécutable. Le fichier du projet est copié au
+même endroit pendant chaque build Linux. S'il manque au lancement, le bridge le recrée avec
+des valeurs documentées et sûres.
+
+Le réglage principal est :
+
+```toml
+[capture]
+mode = "auto"       # "kinect", "webcam" ou "auto"
+webcam_device = 0   # index de /dev/video utilisé par OpenCV
+```
+
+- `kinect` exige la Kinect et ne masque pas une panne en changeant silencieusement de capteur ;
+- `webcam` ignore totalement la Kinect, utile pour une installation préparée ainsi ;
+- `auto` privilégie la Kinect et bascule sur la webcam si elle est absente ou inutilisable.
+
+Le reste du fichier permet de régler la zone de jeu, la résolution/cadence webcam, le miroir,
+le filtre de fond, l'auto-centrage et la preview. Les arguments CLI restent disponibles et ont
+priorité sur le fichier pour un test ponctuel (`--capture-mode webcam`, par exemple).
+
+En webcam, MediaPipe conserve les gestes gauche/droite, plané et battement. Comme une webcam
+n'a pas de profondeur IR, la distance est estimée avec la largeur apparente des épaules : les
+paramètres `webcam_horizontal_fov_deg` et `estimated_shoulder_width_m` permettent de l'ajuster
+sur place. Le filtre de fond IR et le moteur d'auto-centrage sont automatiquement ignorés.
+
+En mode `auto`, une Kinect absente ou inutilisable déclenche le fallback webcam. Si aucune
+caméra ne fonctionne, le jeu reste entièrement pilotable au clavier : voir
 `Assets/Scripts/KinectInput/README.md`.
 
 `run_bridge.sh` fait un `uv sync` (venv + dépendances depuis `pyproject.toml`) et télécharge le
@@ -20,10 +59,11 @@ modèle MediaPipe au premier lancement. Pour préparer l'environnement sans lanc
 uv sync
 ```
 
-### Dépendances système requises
+### Dépendances système requises pour la Kinect sous Linux
 
-`uv sync` suffit pour le Python, mais **la bibliothèque C `libfreenect` doit être installée sur
-la machine**, avec ses headers de développement :
+`uv sync` suffit pour le Python et pour une webcam Windows. Pour utiliser la Kinect sous Linux,
+**la bibliothèque C `libfreenect` doit être installée sur la machine**, avec ses headers de
+développement :
 
 ```bash
 sudo pacman -S libfreenect        # Arch — fournit /usr/lib/libfreenect.so.0 ET /usr/include/libfreenect/
@@ -125,7 +165,8 @@ le problème au pire moment.
 ```
 kibird_bridge/
   protocol.py   # contrat réseau UDP (187 octets, source de vérité)
-  capture.py    # Kinect (freenect) : RGB + profondeur alignée
+  config.py     # création/validation du fichier TOML de déploiement
+  capture.py    # Kinect (RGB + profondeur) ou webcam (RGB + distance estimée)
   tracking.py   # zone 1-4m, verrouillage joueur, délai de grâce 2.5s — 6 tests
   gestures.py   # lean/lift/glide/throttle + filtre One Euro — 13 tests
   segmentation.py # fond > 4 m masqué + isolation du joueur le plus proche — 10 tests
@@ -133,7 +174,7 @@ kibird_bridge/
   autocenter.py # recentrage vertical auto (moteur de tilt, USB direct) — 12 tests
   bridge.py     # orchestration CLI
   preview.py    # fenêtre caméra + overlay squelette/commandes (option --preview, debug)
-tests/          # 51 tests : for t in tests/test_*.py; do uv run python $t; done
+tests/          # 56 tests : for t in tests/test_*.py; do uv run python $t; done
   fixtures/     # image de test réelle utilisée par le test d'intégration
 models/         # modèle .task téléchargé par run_bridge.sh (non versionné, cf. .gitignore)
 bridge_entry.py     # point d'entrée du binaire gelé (PyInstaller veut un script, pas un module)

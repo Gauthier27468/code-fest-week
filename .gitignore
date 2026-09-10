@@ -119,3 +119,6 @@ tools/kinect_bridge/dist/
 tools/kinect_bridge/build/
 
 implementation_plan.md
+
+# do not share the local config
+kibird-config.toml
