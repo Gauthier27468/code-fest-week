@@ -1876,7 +1876,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2421154801892943478, guid: d559d0654d8a203419aa3a17350cee76, type: 3}
       propertyPath: m_Enabled
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4917242437301349843, guid: d559d0654d8a203419aa3a17350cee76, type: 3}
       propertyPath: m_LocalScale.x
@@ -1930,7 +1930,8 @@ PrefabInstance:
       propertyPath: m_Name
       value: Explanation Turn Left
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 2421154801892943478, guid: d559d0654d8a203419aa3a17350cee76, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
@@ -1969,7 +1970,7 @@ BoxCollider:
   m_Enabled: 1
   serializedVersion: 3
   m_Size: {x: 1.2293538, y: 9.587768, z: 5.4603596}
-  m_Center: {x: -1.7277601, y: 4.601789, z: 0.4298687}
+  m_Center: {x: -1.7277601, y: 4.601789, z: 0.7}
 --- !u!65 &5382746382684197943
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -1990,7 +1991,7 @@ BoxCollider:
   m_Enabled: 1
   serializedVersion: 3
   m_Size: {x: 11.277656, y: 9.568109, z: 4.8475547}
-  m_Center: {x: 0.5458541, y: 4.591952, z: 0.7362724}
+  m_Center: {x: 0.5458541, y: 4.591952, z: 0.76}
 --- !u!65 &6351380987291351028
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -2010,8 +2011,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 4.4802065, y: 9.587769, z: 5.360447}
-  m_Center: {x: 3.944565, y: 4.6017876, z: 0.4798264}
+  m_Size: {x: 4.4802065, y: 4.16, z: 5.360447}
+  m_Center: {x: 3.944565, y: 2.33, z: 0.4798264}
 --- !u!4 &7811876771816254374 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4917242437301349843, guid: d559d0654d8a203419aa3a17350cee76, type: 3}

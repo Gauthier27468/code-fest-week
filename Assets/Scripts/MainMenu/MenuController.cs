@@ -25,6 +25,9 @@ namespace KiBird.MainMenu
         [Tooltip("Texte affichant le classement des meilleurs scores du poste.")]
         [SerializeField] private Text leaderboardText;
         [SerializeField] private Text promptText;
+        [SerializeField] private Text countdownText;
+        [SerializeField] private Text trackingStatusText;
+        [SerializeField] private Image trackingStatusDot;
 
         [Header("Démarrage")]
         [SerializeField] private Image startProgressFill;
@@ -32,31 +35,20 @@ namespace KiBird.MainMenu
         [SerializeField] private GameObject menuVisualRoot;
         [SerializeField] private GameObject menuGameRoot;
 
+        [Header("Couleurs de synchronisation")]
+        [SerializeField] private Color waitingColor = new Color(0.76f, 0.68f, 0.48f);
+        [SerializeField] private Color detectedColor = new Color(0.62f, 0.84f, 0.46f);
+        [SerializeField] private Color chargingColor = new Color(1f, 0.73f, 0.16f);
+
         private string instructionMessage;
+
         private float holdTimer;
         private bool isStarting;
         private MoveBird birdMovement;
 
-        public void Configure(DemoKeyboardInput input, KinectStartInputSource kinectInput,
-            SilhouetteRig silhouette, Text lastScore, Text bestScore, Text leaderboard, Text prompt,
-            Image progressFill, GameObject visualRoot, GameObject gameRoot = null)
-        {
-            inputProvider = input;
-            kinectInputProvider = kinectInput;
-            playerSilhouette = silhouette;
-            lastScoreText = lastScore;
-            bestScoreText = bestScore;
-            leaderboardText = leaderboard;
-            promptText = prompt;
-            startProgressFill = progressFill;
-            menuVisualRoot = visualRoot;
-            if (gameRoot != null) menuGameRoot = gameRoot;
-        }
-
         private void Start()
         {
             RefreshScores();
-
             if (playerSilhouette != null) playerSilhouette.ApplyGlidePose();
 
             birdMovement = Object.FindFirstObjectByType<MoveBird>();
@@ -73,7 +65,7 @@ namespace KiBird.MainMenu
             if (menuVisualRoot != null) menuVisualRoot.SetActive(true);
             if (menuGameRoot != null) menuGameRoot.SetActive(false);
 
-            if (promptText != null) instructionMessage = promptText.text;
+            instructionMessage = promptText != null ? promptText.text : string.Empty;
         }
 
         private void Update()
@@ -84,24 +76,62 @@ namespace KiBird.MainMenu
             bool charging = (inputProvider != null && inputProvider.IsGlideHeld) ||
                             (kinectInputProvider != null && kinectInputProvider.IsGlideHeld);
 
+            // Présence Kinect pour l'indicateur visuel uniquement, lue directement sur
+            // KinectInputSource (même source que KinectStartInputSource.IsGlideHeld en interne) :
+            // le clavier n'a pas de notion de "présence" distincte de la pose elle-même.
+            bool playerPresent = charging ||
+                (KinectInputSource.Instance != null && KinectInputSource.Instance.HasPlayer);
+
             UpdateStartProgress(charging);
             UpdatePrompt(charging);
+            UpdateTrackingStatus(playerPresent, charging);
         }
 
         private void UpdatePrompt(bool charging)
         {
-            if (promptText == null) return;
+            Text dynamicText = countdownText != null ? countdownText : promptText;
+            if (dynamicText == null) return;
 
             if (charging)
             {
                 int remaining = Mathf.Clamp(Mathf.CeilToInt(holdDurationToStart - holdTimer), 1,
                     Mathf.CeilToInt(holdDurationToStart));
-                promptText.text = remaining + "...";
+                dynamicText.text = remaining.ToString();
             }
             else
             {
-                promptText.text = instructionMessage;
+                dynamicText.text = countdownText != null ? string.Empty : instructionMessage;
             }
+        }
+
+        private void UpdateTrackingStatus(bool playerPresent, bool charging)
+        {
+            if (trackingStatusText == null && trackingStatusDot == null) return;
+
+            string message;
+            Color color;
+            if (charging)
+            {
+                message = "GARDEZ LA POSE";
+                color = chargingColor;
+            }
+            else if (playerPresent)
+            {
+                message = "JOUEUR DÉTECTÉ";
+                color = detectedColor;
+            }
+            else
+            {
+                message = "EN ATTENTE D'UN JOUEUR";
+                color = waitingColor;
+            }
+
+            if (trackingStatusText != null)
+            {
+                trackingStatusText.text = message;
+                trackingStatusText.color = color;
+            }
+            if (trackingStatusDot != null) trackingStatusDot.color = color;
         }
 
         private void UpdateStartProgress(bool charging)
