@@ -12,12 +12,10 @@ dependencies = [
     "mediapipe==0.10.35",
     "numpy>=2.0",
     "opencv-python-headless>=4.9",
-    # Bindings Cython de libfreenect. Compilés depuis les sources au `uv sync` : cela demande un
-    # compilateur C et les headers système (/usr/include/libfreenect/, paquet `libfreenect` sur
-    # Arch), mais le module atterrit DANS le venv. C'est ce qui permet à `uv sync` de suffire :
-    # plus besoin de `uv venv --system-site-packages` pour aller chercher le freenect système.
-    # Le .so compilé reste lié à /usr/lib/libfreenect.so.0 à l'exécution.
-    "freenect>=0.1.0",
+    # Bindings Cython de libfreenect. Le paquet PyPI ne se compile que sur Linux ; en mode
+    # webcam sous Windows il ne doit surtout pas bloquer `uv sync`. Le bridge l'importe
+    # paresseusement uniquement quand [capture].mode vaut kinect/auto avec une Kinect presente.
+    "freenect>=0.1.0; sys_platform == 'linux'",
     # Pilotage du moteur de tilt (autocenter.py). Pas via freenect : son `open_device()`
     # reclame l'interface camera, deja detenue par le `sync_get_video()` de capture.py
     # (LIBUSB_ERROR_BUSY), et le binding Cython n'expose pas `freenect_select_subdevices()`.

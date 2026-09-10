@@ -1,5 +1,9 @@
 # Entrée Kinect — intégration Unity
 
+La source physique est choisie dans `kibird-config.toml`, à la racine du projet en éditeur et
+à côté de l'exécutable dans un build. Les modes disponibles sont `kinect`, `webcam` et `auto`.
+Le bridge crée automatiquement ce fichier avec les valeurs par défaut s'il est absent.
+
 Ce dossier reçoit les commandes de vol envoyées par le bridge Python (Kinect) en UDP et les
 expose exactement comme un input clavier. Rien à installer, aucune scène à préparer :
 `KinectInputSource` et `KinectBridgeLauncher` se créent tout seuls au lancement.

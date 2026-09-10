@@ -15,6 +15,7 @@ public class KinectBridgeLauncher : MonoBehaviour
 {
     private const string ScriptRelativePath = "tools/kinect_bridge/run_bridge.sh";
     private const string BundledBridgeRelativePath = "kinect_bridge/kibird_bridge";
+    private const string ConfigFileName = "kibird-config.toml";
 
     [Tooltip("Nombre de relances automatiques tolérées avant d'abandonner.")]
     public int maxRestartAttempts = 5;
@@ -80,23 +81,28 @@ public class KinectBridgeLauncher : MonoBehaviour
     /// <summary>Binaire gelé en priorité, script source en repli. False si rien d'utilisable.</summary>
     private bool ResolveBridgeCommand()
     {
+        // En build comme dans l'editeur, le fichier reste visible a la racine, a cote du jeu
+        // ou du dossier Assets. Le bridge le cree lui-meme s'il a ete supprime.
+        string appRoot = Directory.GetParent(Application.dataPath)?.FullName;
+        string configPath = Path.Combine(appRoot ?? Application.dataPath, ConfigFileName);
+        string configArguments = $"--config \"{configPath}\"";
+
         string bundled = Path.Combine(Application.streamingAssetsPath, BundledBridgeRelativePath);
         if (File.Exists(bundled))
         {
             _executable = bundled;
-            _arguments = string.Empty;
+            _arguments = configArguments;
             // Le bundle PyInstaller cherche son dossier _internal relativement à l'exécutable.
             _workingDir = Path.GetDirectoryName(bundled);
             return true;
         }
 
         // Le parent de dataPath est la racine du projet (éditeur) ou du build (standalone).
-        string appRoot = Directory.GetParent(Application.dataPath)?.FullName;
         string scriptPath = appRoot != null ? Path.Combine(appRoot, ScriptRelativePath) : null;
         if (scriptPath != null && File.Exists(scriptPath))
         {
             _executable = "/bin/bash";
-            _arguments = $"\"{scriptPath}\"";
+            _arguments = $"\"{scriptPath}\" {configArguments}";
             _workingDir = Path.GetDirectoryName(scriptPath);
             return true;
         }
