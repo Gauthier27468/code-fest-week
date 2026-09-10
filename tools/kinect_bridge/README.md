@@ -89,9 +89,11 @@ kibird_bridge/
   capture.py    # Kinect (freenect) : RGB + profondeur alignée
   tracking.py   # zone 1-4m, verrouillage joueur, délai de grâce 2.5s — 6 tests
   gestures.py   # lean/lift/glide/throttle + filtre One Euro — 13 tests
+  segmentation.py # fond > 4 m masqué + isolation du joueur le plus proche — 10 tests
   pose.py       # wrapper MediaPipe PoseLandmarker
   bridge.py     # orchestration CLI
-tests/          # 28 tests : for t in tests/test_*.py; do uv run python $t; done
+  preview.py    # fenêtre caméra + overlay squelette/commandes (option --preview, debug)
+tests/          # 39 tests : for t in tests/test_*.py; do uv run python $t; done
   fixtures/     # image de test réelle utilisée par le test d'intégration
 models/         # modèle .task téléchargé par run_bridge.sh (non versionné, cf. .gitignore)
 bridge_entry.py     # point d'entrée du binaire gelé (PyInstaller veut un script, pas un module)
@@ -99,6 +101,66 @@ kibird_bridge.spec  # recette PyInstaller (mediapipe, freenect, modèle .task)
 build_bridge.sh     # gèle le bridge et le copie où on lui demande (appelé par Unity au build)
 dist/, build/       # artefacts PyInstaller, non versionnés
 ```
+
+### Filtre de fond (profondeur IR)
+
+Avant d'envoyer l'image à MediaPipe, tous les pixels situés au-delà de **4 m** (limite de la
+zone de jeu) sont noircis à partir de la profondeur IR alignée sur la RGB. Les visiteurs qui
+passent derrière le joueur ne produisent donc plus de squelette du tout. Coût mesuré :
+~4 ms/frame (budget 33 ms à 30 Hz).
+
+```bash
+./run_bridge.sh --bg-max-distance 3.5   # resserrer la coupure
+./run_bridge.sh --no-bg-filter          # désactiver (debug)
+```
+
+Le masque ne garde que la **composante connexe la plus proche** : un second visiteur qui entre
+dans les 4 m est retiré de l'image. MediaPipe tourne donc en `--num-poses 1`, où il réutilise la
+ROI de la frame précédente au lieu de relancer son détecteur de personnes à chaque frame.
+
+Budget mesuré par frame (640x480, CPU, `pose_landmarker_lite`) :
+
+| étape | avant | après |
+|---|---|---|
+| masque + application | 4.3 ms (`np.copyto(where=)`) | 1.5 ms (`cv2.bitwise_and`) |
+| isolation du blob le plus proche | — | 1.9 ms |
+| `PoseLandmarker.detect` | 55.9 ms (`num_poses=3`) | 31.5 ms (`num_poses=1`) |
+| **pipeline complet** | **~61 ms (16 Hz)** | **~37 ms (27 Hz)** |
+
+Ce qui **ne** sert **pas** : rogner l'image sur la bounding box du joueur. MediaPipe redimensionne
+de toute façon son entrée à une résolution fixe, donc un crop 208x388 mesure 53.9 ms contre
+51.2 ms en pleine image — c'est le resize supplémentaire, à aspect ratio différent, qui coûte.
+Même constat pour un downscale en 320x240 : 31.1 ms contre 31.5 ms, dans le bruit.
+
+Garde-fous : les trous IR sur le joueur sont bouchés (fermeture morphologique) et une depth
+inexploitable laisse l'image intacte plutôt que de la noircir entièrement.
+Si le SOL est visible dans la zone < 4 m, il peut relier deux personnes en une seule composante
+connexe : incliner la Kinect légèrement vers le haut, ou relancer avec `--num-poses 2`.
+
+### Retour caméra avec overlay (`--preview`)
+
+Ouvre une fenêtre OpenCV montrant l'image de la Kinect avec, superposés : tous les squelettes
+détectés par MediaPipe (le joueur verrouillé en vert épais, les détections ignorées en gris
+fin), la taille des points proportionnelle à la confiance du landmark, et un HUD avec la
+cadence, la distance, l'état zone/calibration et les 4 commandes envoyées à Unity.
+
+```bash
+./run_bridge.sh --preview                     # fenêtre plein format
+./run_bridge.sh --preview --preview-scale 0.5 # demi-taille, pour laisser la place au jeu
+```
+
+Touches dans la fenêtre : `q` / `Échap` arrêtent le bridge, `f` bascule entre l'image brute de
+la caméra et l'image réellement envoyée à MediaPipe (utile pour régler `--bg-max-distance`).
+
+Prérequis : un OpenCV **avec** HighGUI, absent du wheel `opencv-python-headless` installé par
+défaut. Il est déclaré dans l'extra `preview` :
+
+```bash
+uv sync --extra preview
+```
+
+Option de debug/réglage : `imshow` coûte quelques millisecondes par frame et la fenêtre
+s'affiche par-dessus le jeu — à ne pas activer pendant une JPO.
 
 ### Validation matériel
 

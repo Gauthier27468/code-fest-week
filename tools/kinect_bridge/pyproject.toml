@@ -20,6 +20,12 @@ dependencies = [
     "freenect>=0.1.0",
 ]
 
+[project.optional-dependencies]
+# --preview a besoin de HighGUI, absent du wheel headless. Les deux paquets fournissent le meme
+# module `cv2` et ne peuvent pas coexister : installer opencv-python remplace la variante
+# headless (memes fonctions, aucune regression). `uv sync --extra preview`.
+preview = ["opencv-python>=4.9"]
+
 [dependency-groups]
 # Les tests s'exécutent en scripts autonomes (`python tests/test_x.py`), sans pytest.
 # PyInstaller ne sert qu'à produire le binaire embarqué dans le build Unity (build_bridge.sh) :

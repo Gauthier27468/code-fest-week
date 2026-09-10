@@ -141,11 +141,30 @@ def _grab_first_frame(capture, timeout_s: float = 8.0):
 def run_live(args: argparse.Namespace) -> None:
     from .capture import KinectCapture, KinectUnavailableError
     from .pose import PoseEstimator
+    from .segmentation import remove_background
+
+    preview = None
+    if args.preview:
+        # Import differe comme le reste : --preview a besoin d'un OpenCV avec HighGUI, dont
+        # le mode nominal (sans preview) ne doit pas dependre.
+        from .preview import PreviewClosed, PreviewWindow
+
+        preview = PreviewWindow(scale=args.preview_scale)
 
     print(f"Chargement du modele {args.model} ...")
     pose_estimator = PoseEstimator(args.model, num_poses=args.num_poses)
     capture = KinectCapture()
+    # La depth de capture.py est toujours DEPTH_REGISTERED, donc alignee sur la RGB :
+    # le masque peut etre applique tel quel (cf. segmentation.py).
+    bg_filter_enabled = args.bg_filter
     print("Kinect initialisee.")
+    if bg_filter_enabled:
+        print(f"Filtre de fond IR actif : tout ce qui est au-dela de {args.bg_max_distance:.1f}m est masque.")
+        if args.num_poses > 1:
+            print(f"  (--num-poses {args.num_poses} : MediaPipe cherche plusieurs poses, ~25 ms/frame "
+                  f"de plus. 1 suffit tant que le filtre isole bien le joueur.)")
+    else:
+        print("Filtre de fond IR desactive.")
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
@@ -181,8 +200,11 @@ def run_live(args: argparse.Namespace) -> None:
         raise init_error
     print("Flux video OK.")
 
+    if preview is not None:
+        print("[PREVIEW] Fenetre de debug active (q/Echap pour quitter, f pour basculer brut/filtre).")
     print(f"Emission UDP vers {args.host}:{args.port} @ ~{TARGET_HZ:.0f}Hz. Ctrl+C pour arreter.")
     frames_since_status = 0
+    hz_ema = 0.0
     last_status_t = time.time()
     try:
         while True:
@@ -193,7 +215,14 @@ def run_live(args: argparse.Namespace) -> None:
             dt = max(now - last_t, 1e-3)
             last_t = now
 
-            skeletons = pose_estimator.detect(frame.rgb)
+            # Fond supprime AVANT MediaPipe : les personnes au-dela de la zone de jeu ne
+            # generent plus de squelette du tout, au lieu d'etre filtrees apres coup.
+            rgb_for_pose = (
+                remove_background(frame.rgb, frame.depth_mm, max_depth_m=args.bg_max_distance)
+                if bg_filter_enabled
+                else frame.rgb
+            )
+            skeletons = pose_estimator.detect(rgb_for_pose)
             candidate, distance, hip_x, hip_y = _select_front_skeleton(
                 skeletons, capture, frame.depth_mm, frame.rgb.shape[1], frame.rgb.shape[0],
             )
@@ -229,6 +258,25 @@ def run_live(args: argparse.Namespace) -> None:
             sock.sendto(protocol.pack(packet), (args.host, args.port))
             seq += 1
 
+            # Cadence instantanee lissee : la ligne de statut ne la calcule que toutes les
+            # 2s, trop lent pour une fenetre rafraichie a chaque frame.
+            hz_ema = 1.0 / dt if hz_ema == 0.0 else 0.9 * hz_ema + 0.1 / dt
+
+            if preview is not None:
+                try:
+                    preview.show(
+                        frame.rgb, rgb_for_pose, skeletons, candidate,
+                        distance=distance,
+                        in_zone=tracking_result.in_zone,
+                        player_present=tracking_result.player_present,
+                        calibrated=gesture_state.neutral_distance_m is not None,
+                        gesture_out=gesture_out,
+                        hz=hz_ema,
+                    )
+                except PreviewClosed:
+                    print("\n[PREVIEW] Fenetre fermee, arret du bridge.")
+                    break
+
             # Sans cette ligne de statut, un blocage de la capture est indiscernable d'un
             # fonctionnement normal : la console reste muette dans les deux cas.
             frames_since_status += 1
@@ -252,6 +300,8 @@ def run_live(args: argparse.Namespace) -> None:
         sock.close()
         capture.close()
         pose_estimator.close()
+        if preview is not None:
+            preview.close()
 
 
 def main() -> None:
@@ -259,12 +309,26 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7777)
     parser.add_argument("--model", default=str(DEFAULT_MODEL_PATH), help="Chemin du modele .task PoseLandmarker")
-    parser.add_argument("--num-poses", type=int, default=3, help="Nombre max de personnes detectees par MediaPipe")
+    parser.add_argument("--num-poses", type=int, default=1,
+                        help="Nombre max de personnes detectees par MediaPipe. 1 par defaut : le "
+                             "filtre de fond ne laisse deja qu'une personne dans l'image, et "
+                             "au-dela de 1 MediaPipe perd sa fast-path de suivi (31 ms -> 56 ms "
+                             "par frame). Passer a 2 si deux visiteurs sont confondus.")
     parser.add_argument("--mirror", action=argparse.BooleanOptionalAction, default=False,
                         help="Inverse gauche/droite. Le mapping par defaut est deja naturel : "
                              "n'active ce flag que si le ressenti est inverse a l'installation.")
+    parser.add_argument("--bg-filter", action=argparse.BooleanOptionalAction, default=True,
+                        help="Masque le fond au-dela de --bg-max-distance avec la profondeur IR "
+                             "avant d'envoyer l'image a MediaPipe")
+    parser.add_argument("--bg-max-distance", type=float, default=2.0,
+                        help="Distance (m) au-dela de laquelle les pixels sont noircis")
+    parser.add_argument("--preview", action="store_true",
+                        help="Ouvre une fenetre camera avec overlay du squelette MediaPipe et des "
+                             "commandes deduites (debug/reglage ; necessite opencv-python non-headless)")
+    parser.add_argument("--preview-scale", type=float, default=1.0,
+                        help="Facteur d'echelle de la fenetre --preview (ex. 0.5 pour une demi-taille)")
     parser.add_argument("--min-distance", type=float, default=1.0)
-    parser.add_argument("--max-distance", type=float, default=4.0)
+    parser.add_argument("--max-distance", type=float, default=2.0)
     args = parser.parse_args()
 
     from .capture import KinectUnavailableError
