@@ -7,7 +7,6 @@ import sys
 import time
 from pathlib import Path
 
-from .autocenter import focus as autocenter_focus, reset as autocenter_reset
 from . import protocol
 from .gestures import GestureConfig, GestureOutput, GestureState, update_gestures
 from .tracking import PlayerTracker, TrackingConfig
@@ -25,8 +24,6 @@ DEFAULT_MODEL_PATH = _default_model_path()
 
 # Maintien de la posture bras tendus validant le demarrage.
 CALIBRATION_HOLD_S = 3.0
-# En dessous, la tete est occluse ou devinee : piloter le moteur dessus le fait divaguer.
-AUTOCENTER_MIN_VISIBILITY = 0.5
 TARGET_HZ = 30.0
 
 # Juste apres l'ouverture du device USB, sync_get_video() renvoie parfois None au premier appel.
@@ -257,13 +254,6 @@ def run_live(args: argparse.Namespace) -> None:
                 gesture_out = GestureOutput(lean=0.0, lift=0.0, throttle=0.0, glide=0.0)
                 glide_hold_start = None
 
-            if args.auto_center:
-                head = candidate.get("NOSE") if candidate is not None else None
-                if head is not None and head.visibility >= AUTOCENTER_MIN_VISIBILITY:
-                    autocenter_focus((head.x, head.y))
-                elif not tracking_result.player_present:
-                    autocenter_reset()
-
             packet = _build_packet(seq, frame.timestamp, tracking_result, distance, gesture_out, candidate)
             sock.sendto(protocol.pack(packet), (args.host, args.port))
             seq += 1
@@ -339,7 +329,6 @@ def main() -> None:
                         help="Facteur d'echelle de la fenetre --preview (ex. 0.5 pour une demi-taille)")
     parser.add_argument("--min-distance", type=float, default=1.0)
     parser.add_argument("--max-distance", type=float, default=2.0)
-    parser.add_argument("--auto-center", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
 
     from .capture import KinectUnavailableError

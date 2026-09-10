@@ -23,10 +23,7 @@ a = Analysis(
     # capture.py, qui l'importe paresseusement : sans ce hiddenimport il serait absent du bundle.
     # PyInstaller suit ensuite ses dépendances natives (libfreenect.so.0, libfreenect_sync.so.0)
     # tout seul.
-    # `usb.backend.libusb1` est charge dynamiquement par pyusb (jamais importe statiquement),
-    # donc invisible pour l'analyse statique. libusb-1.0 elle-meme n'est pas embarquee : elle
-    # arrive deja dans le bundle comme dependance native de libfreenect.so.0.
-    hiddenimports=mp_hiddenimports + ["freenect", "usb", "usb.backend.libusb1"],
+    hiddenimports=mp_hiddenimports + ["freenect"],
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
