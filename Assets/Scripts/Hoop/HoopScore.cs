@@ -18,7 +18,7 @@ public class HoopScore : MonoBehaviour
     [Range(0f, 1f)]
     public float soundVolume = 1.0f;
 
-    [Tooltip("Effet de particules à la collecte. Si vide, des éclats dorés sont générés.")]
+    [Tooltip("Effet de particules à la collecte. Si vide, des confettis multicolores sont générés.")]
     public GameObject collectEffectPrefab;
 
     private bool isCollected;
@@ -60,7 +60,7 @@ public class HoopScore : MonoBehaviour
         }
 
         ParticleBurst.Play(transform.position,
-            ParticleBurst.HoopSparkles, collectEffectPrefab);
+            ParticleBurst.HoopConfetti, collectEffectPrefab);
 
         StartCoroutine(AnimateCollectionAndDestroy());
     }
