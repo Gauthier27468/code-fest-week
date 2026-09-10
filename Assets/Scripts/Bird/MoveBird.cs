@@ -77,8 +77,8 @@ public class MoveBird : MonoBehaviour
     [Tooltip("Altitude minimale (sol/eau).")]
     public float defaultMinHeight = 1.5f;
 
-    [Tooltip("Si décoché (recommandé), utilise directement les limites ci-dessus. Si coché, permet aux composants BlockBounds de redéfinir les limites par bloc.")]
-    public bool useBlockBounds = false;
+    [Tooltip("Active l'adaptation automatique des limites de vol en fonction du bloc traversé (BlockBounds). Si aucun BlockBounds n'est présent sur un bloc, les limites par défaut ci-dessus sont appliquées.")]
+    public bool useBlockBounds = true;
 
     [Tooltip("Durée de planage forcé après avoir touché le plafond (l'oiseau ne peut plus remonter immédiatement).")]
     public float ceilingRecoveryDuration = 0.6f;

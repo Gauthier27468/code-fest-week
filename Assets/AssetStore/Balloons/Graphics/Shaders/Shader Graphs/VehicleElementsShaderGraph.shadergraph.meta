@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 889b225f9f81d624382b21dbb2889212
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: 625f186215c104763be7675aa2d941aa, type: 3}
+AssetOrigin:
+  serializedVersion: 1
+  productId: 257931
+  packageName: 'UNDERPOLY: Free Hot-Air Balloons'
+  packageVersion: 1.2
+  assetPath: Assets/UNDERPOLY - Free Hot-Air Balloons/Graphics/Shaders/Shader Graphs/VehicleElementsShaderGraph.shadergraph
+  uploadId: 621836

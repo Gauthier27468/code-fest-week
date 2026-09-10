@@ -16,10 +16,14 @@ public static class KiBirdBlockBoundsSetup
 
         foreach (var t in allTransforms)
         {
-            if (t != null && (t.name == "WallLeft" || t.name == "WallRight"))
+            if (t != null && (t.name.IndexOf("WallLeft", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              t.name.IndexOf("WallRight", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              t.name.IndexOf("WallsLeft", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              t.name.IndexOf("WallsRight", System.StringComparison.OrdinalIgnoreCase) >= 0))
             {
                 Transform blockRoot = t.parent;
-                if (blockRoot != null && blockRoot.name == "Content")
+                while (blockRoot != null && blockRoot.parent != null &&
+                       (blockRoot.name == "Content" || blockRoot.name == "WallsLeft" || blockRoot.name == "WallsRight" || blockRoot.name.StartsWith("SM_")))
                 {
                     blockRoot = blockRoot.parent;
                 }
@@ -32,19 +36,18 @@ public static class KiBirdBlockBoundsSetup
                     if (bounds == null)
                     {
                         bounds = Undo.AddComponent<BlockBounds>(blockRoot.gameObject);
+                        bounds.AutoDetectFromWalls();
+                        bounds.maxHeight = BlockBounds.StandardDefaultMaxHeight;
+                        bounds.minHeight = BlockBounds.StandardDefaultMinHeight;
+                        EditorUtility.SetDirty(blockRoot.gameObject);
+                        count++;
                     }
-
-                    bounds.AutoDetectFromWalls();
-                    bounds.maxHeight = 9.5f;
-                    bounds.minHeight = 1.5f;
-                    EditorUtility.SetDirty(blockRoot.gameObject);
-                    count++;
                 }
             }
         }
 
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
-        Debug.Log($"[KiBird] BlockBounds configuré sur {count} blocs dans la scène.");
+        Debug.Log($"[KiBird] BlockBounds vérifié/configuré sur {count} nouveaux blocs dans la scène.");
     }
 
     [MenuItem("KiBird/Add BlockBounds to Environment Prefabs")]
@@ -64,15 +67,14 @@ public static class KiBirdBlockBoundsSetup
                 if (bounds == null)
                 {
                     bounds = prefab.AddComponent<BlockBounds>();
+                    bounds.AutoDetectFromWalls();
+                    bounds.maxHeight = BlockBounds.StandardDefaultMaxHeight;
+                    bounds.minHeight = BlockBounds.StandardDefaultMinHeight;
+                    PrefabUtility.SaveAsPrefabAsset(prefab, path);
+                    count++;
                 }
 
-                bounds.AutoDetectFromWalls();
-                bounds.maxHeight = 9.5f;
-                bounds.minHeight = 1.5f;
-
-                PrefabUtility.SaveAsPrefabAsset(prefab, path);
                 PrefabUtility.UnloadPrefabContents(prefab);
-                count++;
             }
         }
 

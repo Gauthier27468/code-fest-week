@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 7703d9c956eedf6479f6913baf203fdb
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 257931
+  packageName: 'UNDERPOLY: Free Hot-Air Balloons'
+  packageVersion: 1.2
+  assetPath: Assets/UNDERPOLY - Free Hot-Air Balloons/Graphics/Renderer/HDRP/HDRP_Asset.asset
+  uploadId: 621836

@@ -1604,7 +1604,12 @@ MonoBehaviour:
   - {fileID: 7921799219669555613, guid: 4fa5493d2a2180b479703f8aae03c8e1, type: 3}
   - {fileID: 8410335111802457780, guid: 4d95a3388eb1e7fc487e3fb4aa95b5ae, type: 3}
   - {fileID: 2706702639108165213, guid: 6dd5fddc70712ab4f84eec7da53a7040, type: 3}
+  - {fileID: 2070279880498992626, guid: 23da6e19e4a8ba0f1aa125de23123e9a, type: 3}
+  - {fileID: 7558982517859427766, guid: 76b52f0498e51904e806d53792936f5a, type: 3}
+  - {fileID: 7302319747520972510, guid: 407b969ee77ef344895be69d60ac3273, type: 3}
+  - {fileID: 1532897473572692340, guid: 96fb255c8deaaa448b3bcd3069523ab5, type: 3}
   avoidConsecutiveDuplicates: 1
+  noDuplicates: 1
   streamBlocksAhead: 1
   spawnAheadBlocks: 5
   destroyPassedBlocks: 1

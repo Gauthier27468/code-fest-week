@@ -213,7 +213,7 @@ MonoBehaviour:
   defaultMaxX: 8.84
   defaultMaxHeight: 8.5
   defaultMinHeight: 1.5
-  useBlockBounds: 0
+  useBlockBounds: 1
   ceilingRecoveryDuration: 0.6
   boundsTransitionSpeed: 8
   scorePerMeter: 1
