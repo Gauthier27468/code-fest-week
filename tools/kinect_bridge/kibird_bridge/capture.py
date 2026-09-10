@@ -1,10 +1,4 @@
-"""Capture Kinect 1414 via libfreenect : flux RGB + profondeur alignée.
-
-La distance du joueur est mesurée sur la vraie profondeur Kinect (pas sur l'échelle
-apparente du corps estimée par MediaPipe) : voir implementation_plan.md section 3.1.
-Le mode registered aligne la depth map sur le repère de l'image RGB, ce qui est
-indispensable puisque les caméras RGB et IR sont physiquement décalées sur la Kinect.
-"""
+"""Capture Kinect 1414 via libfreenect : flux RGB + profondeur alignee sur le repere RGB."""
 from __future__ import annotations
 
 import glob
@@ -17,15 +11,11 @@ import numpy as np
 
 
 class KinectUnavailableError(RuntimeError):
-    """La Kinect n'a pas pu être ouverte. Le message porte le diagnostic et la marche à suivre."""
+    """La Kinect n'a pas pu etre ouverte. Le message porte le diagnostic et la marche a suivre."""
 
 
 def _diagnose_failure() -> str:
-    """Construit un message actionnable au lieu du `TypeError: cannot unpack NoneType` de freenect.
-
-    Le cas de loin le plus fréquent est le module noyau `gspca_kinect`, chargé automatiquement,
-    qui réserve la caméra et fait échouer libfreenect avec `LIBUSB_ERROR_BUSY`.
-    """
+    """Message actionnable, a la place du `TypeError: cannot unpack NoneType` de freenect."""
     lines = ["Impossible d'ouvrir la Kinect."]
 
     plugged = False
@@ -38,59 +28,48 @@ def _diagnose_failure() -> str:
         pass
 
     if not plugged:
-        lines.append("  -> Aucun périphérique Microsoft détecté : vérifie le câble USB et "
+        lines.append("  -> Aucun peripherique Microsoft detecte : verifie le cable USB et "
                      "l'alimentation secteur de la Kinect (elle en a besoin, l'USB ne suffit pas).")
         return "\n".join(lines)
 
-    lines.append("  La Kinect est bien branchée (périphérique USB Microsoft détecté).")
+    lines.append("  La Kinect est bien branchee (peripherique USB Microsoft detecte).")
     if Path("/sys/module/gspca_kinect").exists():
-        lines.append("  -> CAUSE PROBABLE : le module noyau `gspca_kinect` est chargé et réserve")
-        lines.append("     la caméra (LIBUSB_ERROR_BUSY). Corrige avec :")
+        lines.append("  -> CAUSE PROBABLE : le module noyau `gspca_kinect` est charge et reserve")
+        lines.append("     la camera (LIBUSB_ERROR_BUSY). Corrige avec :")
         lines.append("         sudo rmmod gspca_kinect")
-        lines.append("     puis, pour que ça survive au redémarrage :")
+        lines.append("     puis, pour que ca survive au redemarrage :")
         lines.append("         echo 'blacklist gspca_kinect' | sudo tee /etc/modprobe.d/kibird-kinect.conf")
     else:
-        lines.append("  -> Vérifie qu'aucun autre process n'utilise déjà la Kinect "
-                     "(un bridge lancé dans un autre terminal ?).")
+        lines.append("  -> Verifie qu'aucun autre process n'utilise deja la Kinect "
+                     "(un bridge lance dans un autre terminal ?).")
     return "\n".join(lines)
 
 
 @dataclass
 class Frame:
     rgb: np.ndarray  # (480, 640, 3) uint8
-    depth_mm: np.ndarray  # (480, 640) uint16, aligné sur rgb, 0 = pixel invalide (trou IR)
-    timestamp: float  # time.time() à la capture (horloge murale) — PAS le tick interne freenect
+    depth_mm: np.ndarray  # (480, 640) uint16, aligne sur rgb, 0 = pixel invalide
+    timestamp: float  # time.time() a la capture, pas le tick interne freenect
 
 
 class KinectCapture:
-    """Wrapper fin autour de freenect. Une instance = un accès exclusif au device 0."""
-
-    def __init__(self, use_registered_depth: bool = True) -> None:
-        self._depth_format = (
-            freenect.DEPTH_REGISTERED if use_registered_depth else freenect.DEPTH_MM
-        )
+    """Une instance = un acces exclusif au device 0."""
 
     def read(self) -> Frame:
-        """Bloque jusqu'à la prochaine frame disponible (synchrone, cadence Kinect ~30 Hz).
-
-        ⚠️ freenect renvoie un timestamp qui est un compteur interne au driver (pas une heure
-        epoch) : on l'ignore et on horodate nous-mêmes avec `time.time()`, seul moyen de
-        mesurer la latence bout-en-bout attendue par le contrat réseau (implementation_plan.md §2,
-        critère de réussite < 150 ms).
-        """
+        """Bloque jusqu'a la prochaine frame (synchrone, cadence Kinect ~30 Hz)."""
         video = freenect.sync_get_video()
         if video is None:
             raise KinectUnavailableError(_diagnose_failure())
-        depth = freenect.sync_get_depth(format=self._depth_format)
+        depth = freenect.sync_get_depth(format=freenect.DEPTH_REGISTERED)
         if depth is None:
             raise KinectUnavailableError(_diagnose_failure())
         return Frame(rgb=video[0], depth_mm=depth[0], timestamp=time.time())
 
     def median_depth_at(self, depth_mm: np.ndarray, px: int, py: int, window: int = 20) -> float:
-        """Médiane de la profondeur (mètres) dans une fenêtre window x window centrée sur (px, py).
+        """Mediane de la profondeur (metres) dans une fenetre centree sur (px, py).
 
-        Les pixels à 0 (trous IR, hors de portée) sont ignorés. Retourne 0.0 si la fenêtre
-        ne contient aucun pixel valide (typiquement : joueur hors de portée du capteur IR).
+        Les pixels a 0 (trous IR, hors de portee) sont ignores. Retourne 0.0 si la fenetre
+        ne contient aucun pixel valide.
         """
         h, w = depth_mm.shape
         half = window // 2
@@ -100,7 +79,4 @@ class KinectCapture:
         valid = region[region > 0]
         if valid.size == 0:
             return 0.0
-        return float(np.median(valid)) / 1000.0  # mm -> m
-
-    def close(self) -> None:
-        freenect.sync_stop()
+        return float(np.median(valid)) / 1000.0

@@ -7,9 +7,9 @@ from kibird_bridge.gestures import GestureConfig, GestureState, update_gestures,
 
 
 def test_deadzone():
-    assert _deadzone(2.0, 5.0) == 0.0
-    assert _deadzone(0.0, 5.0) == 0.0
-    assert abs(_deadzone(-2.0, 5.0)) < 1e-9
+    assert _deadzone(2.0, 5.0, 25.0) == 0.0
+    assert _deadzone(0.0, 5.0, 25.0) == 0.0
+    assert abs(_deadzone(-2.0, 5.0, 25.0)) < 1e-9
 
 
 def test_one_euro_first_call_passthrough():

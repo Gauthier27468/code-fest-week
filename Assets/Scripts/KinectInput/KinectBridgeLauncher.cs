@@ -5,22 +5,11 @@ using UnityEngine;
 using Debug = UnityEngine.Debug;
 
 /// <summary>
-/// Lance et supervise le bridge Kinect en même temps que le jeu : un seul exécutable à démarrer
-/// pour l'animateur, plus besoin d'ouvrir un terminal.
-///
-/// Deux sources possibles, essayées dans cet ordre :
-///  1. le binaire gelé embarqué dans les StreamingAssets du build (déposé par
-///     Assets/Editor/KinectBridgeBuildStep.cs) — le cas normal sur la machine de démo, où ni
-///     Python ni uv ne sont installés ;
-///  2. tools/kinect_bridge/run_bridge.sh à côté du projet — le cas du poste de dev, où l'on veut
-///     lancer le code source tel quel sans repasser par une compilation PyInstaller.
-///
-/// Dans les deux cas le process lancé EST le bridge (run_bridge.sh se termine par un `exec`) :
-/// le tuer ici tue directement Python, sans laisser de zombie tenant la Kinect ou le port UDP.
-///
-/// Aucune scène à modifier : comme KinectInputSource, ce composant se crée tout seul au
-/// lancement. S'il ne trouve aucune des deux sources, il se désactive silencieusement — le
-/// clavier reste disponible comme d'habitude.
+/// Lance et supervise le bridge Kinect en même temps que le jeu : un seul exécutable à démarrer.
+/// Cherche d'abord le binaire gelé des StreamingAssets (machine de démo, sans Python ni uv),
+/// sinon tools/kinect_bridge/run_bridge.sh (poste de dev). Le process lancé EST le bridge
+/// (run_bridge.sh finit par un `exec`) : le tuer ici tue Python sans laisser de zombie sur la
+/// Kinect ou le port UDP. Se crée tout seul au lancement, se désactive si rien n'est trouvé.
 /// </summary>
 public class KinectBridgeLauncher : MonoBehaviour
 {
@@ -68,8 +57,7 @@ public class KinectBridgeLauncher : MonoBehaviour
         }
         Instance = this;
 
-        // Le bridge (freenect, systemd, gspca_kinect...) est spécifique à la machine de démo
-        // Linux : sur toute autre plateforme il n'y a rien à lancer, le clavier suffit.
+        // Le bridge est un binaire Linux natif : rien à lancer sur une autre plateforme.
         if (Application.platform != RuntimePlatform.LinuxPlayer &&
             Application.platform != RuntimePlatform.LinuxEditor)
         {
@@ -89,10 +77,7 @@ public class KinectBridgeLauncher : MonoBehaviour
         LaunchProcess();
     }
 
-    /// <summary>
-    /// Choisit le bridge à lancer : binaire gelé embarqué en priorité, script source en repli.
-    /// Renseigne _executable / _arguments / _workingDir et renvoie false si rien n'est utilisable.
-    /// </summary>
+    /// <summary>Binaire gelé en priorité, script source en repli. False si rien d'utilisable.</summary>
     private bool ResolveBridgeCommand()
     {
         string bundled = Path.Combine(Application.streamingAssetsPath, BundledBridgeRelativePath);
@@ -100,14 +85,12 @@ public class KinectBridgeLauncher : MonoBehaviour
         {
             _executable = bundled;
             _arguments = string.Empty;
-            // Le bundle PyInstaller cherche son dossier _internal relativement à l'exécutable :
-            // on se place dedans pour rester au plus près de son fonctionnement normal.
+            // Le bundle PyInstaller cherche son dossier _internal relativement à l'exécutable.
             _workingDir = Path.GetDirectoryName(bundled);
             return true;
         }
 
-        // Application.dataPath = <Build>/<Produit>_Data en standalone, <Projet>/Assets dans
-        // l'éditeur : dans les deux cas son parent est l'endroit où trouver tools/kinect_bridge.
+        // Le parent de dataPath est la racine du projet (éditeur) ou du build (standalone).
         string appRoot = Directory.GetParent(Application.dataPath)?.FullName;
         string scriptPath = appRoot != null ? Path.Combine(appRoot, ScriptRelativePath) : null;
         if (scriptPath != null && File.Exists(scriptPath))
@@ -161,8 +144,7 @@ public class KinectBridgeLauncher : MonoBehaviour
 
         if (_process != null)
         {
-            // Une fois stable un moment, on considère l'incident précédent oublié : les
-            // prochaines coupures repartent avec le plein quota de tentatives.
+            // Stable un moment : incident précédent oublié, quota de tentatives réarmé.
             if (Time.realtimeSinceStartup - _launchTime > stableUptimeSeconds)
             {
                 _restartAttempts = 0;
@@ -217,7 +199,6 @@ public class KinectBridgeLauncher : MonoBehaviour
         }
         catch
         {
-            // déjà mort entre le HasExited et le Kill : rien à faire.
         }
         finally
         {

@@ -1,8 +1,7 @@
-"""Traduction des articulations en commandes de vol normalisées (implementation_plan.md 3.3).
+"""Traduction des articulations en commandes de vol normalisees.
 
-Les gestes sont calculés ici, côté Python : Unity ne reçoit que des floats déjà
-normalisés et lissés (lean, lift, throttle, glide), directement consommables comme
-un axe d'input clavier — aucune logique de geste ne doit fuiter côté Unity.
+Unity ne recoit que des floats deja normalises et lisses (lean, lift, throttle, glide),
+directement consommables comme un axe d'input : aucune logique de geste cote Unity.
 """
 from __future__ import annotations
 
@@ -10,11 +9,9 @@ import math
 from dataclasses import dataclass, field
 
 
-# --- Filtre One Euro -------------------------------------------------------
-# Meilleur compromis jitter/latence qu'une moyenne glissante : lisse fort les gestes
-# lents (posture stable) sans ajouter de retard perceptible sur les gestes rapides
-# (battement d'ailes), contrairement à un EMA à fenêtre fixe.
 class OneEuroFilter:
+    """Lisse fort les gestes lents sans ajouter de retard perceptible sur les gestes rapides."""
+
     def __init__(self, freq: float = 30.0, min_cutoff: float = 1.0, beta: float = 0.0, d_cutoff: float = 1.0):
         self.freq = freq
         self.min_cutoff = min_cutoff
@@ -55,13 +52,11 @@ def _clamp(v: float, lo: float = -1.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, v))
 
 
-def _deadzone(v: float, threshold: float, max_range: float = 1.0) -> float:
-    """Applique une zone morte et renormalise le reste de la plage sur [-1, 1].
+def _deadzone(v: float, threshold: float, max_range: float) -> float:
+    """Zone morte, puis renormalisation du reste de la plage sur [-1, 1].
 
-    `max_range` est l'échelle de `v` (ex: 25 pour des degrés, 1.0 m pour une distance) —
-    diviser par `(max_range - threshold)` et non par `(1.0 - threshold)` : ce dernier
-    n'a de sens que si `v` est déjà dans [-1, 1], sinon le signe peut s'inverser dès que
-    `threshold > 1` (cas des degrés).
+    `max_range` est l'echelle de `v` (degres, metres...) : diviser par `(max_range - threshold)`
+    et non par `(1.0 - threshold)`, qui inverserait le signe des que `threshold > 1`.
     """
     if abs(v) < threshold:
         return 0.0
@@ -72,47 +67,25 @@ def _deadzone(v: float, threshold: float, max_range: float = 1.0) -> float:
 @dataclass
 class GestureConfig:
     lean_deadzone_deg: float = 5.0
-    # `lean` vient de l'écart de hauteur des poignets (bras type "ailerons"), pas du buste :
-    # un bras qui monte et l'autre qui descend a naturellement plus de course qu'une simple
-    # inclinaison du buste, donc une plage plus large que l'ancien réglage "épaules" (25°)
-    # pour que la réponse reste graduée sur tout le mouvement au lieu de saturer trop tôt.
-    # Point de départ à ajuster après test réel.
+    # `lean` vient de l'ecart de hauteur des poignets (ailerons), pas du buste : plus de course
+    # qu'une inclinaison de buste, donc une plage plus large pour ne pas saturer trop tot.
     lean_max_deg: float = 45.0
-    lift_window_s: float = 0.4  # durée de décroissance de l'impulsion de battement
-    lift_trigger_speed: float = 0.5  # vitesse verticale DESCENDANTE (unités normalisées/s) qui signe un battement
-    lift_trigger_frames: int = 3  # frames CONSÉCUTIVES au-dessus du seuil avant de déclencher
-    # (anti-jitter, complémentaire du mode VIDEO de MediaPipe et du filtrage par sens ci-dessus :
-    # un pic isolé d'une ou deux frames ne suffit plus à déclencher un battement fantôme, il
-    # faut un vrai mouvement descendant soutenu sur ~100ms. À ajuster après test réel : plus ce
-    # nombre est grand, plus les faux positifs baissent mais plus la détection d'un vrai
-    # battement prend de retard — chaque frame en plus coûte 1/30s sur le budget de latence.)
 
-    # `glide` (0 = bras le long du corps, 1 = bras tendus à l'horizontale) est une mesure
-    # CONTINUE de la hauteur des poignets par rapport aux épaules, pas un seuil tout-ou-rien :
-    # un joueur qui lève les bras à mi-hauteur obtient un plané partiel, avec un taux de chute
-    # intermédiaire (cf. glide_full_sink / glide_none_dive ci-dessous).
-    glide_arm_range_shoulders: float = 1.4  # écart poignet/épaule (en largeurs d'épaules) pour glide=0
+    lift_window_s: float = 0.4  # duree de decroissance de l'impulsion de battement
+    lift_trigger_speed: float = 0.5  # vitesse verticale descendante signant un battement
+    # Frames consecutives au-dessus du seuil avant de declencher : un pic isole ne suffit pas.
+    # Plus la valeur est grande, moins de faux positifs mais +1/30s de latence par frame.
+    lift_trigger_frames: int = 3
 
-    # Courbe de réponse de `glide` (pas une simple droite) : humainement, un joueur qui croit
-    # tendre les bras à l'horizontale les a presque toujours un peu plus bas que les épaules
-    # (fatigue, imprécision du geste). Avec un mapping linéaire, ce petit écart — pourtant
-    # anodin visuellement — coûtait déjà une chute perceptible. L'exposant aplatit la courbe
-    # près de glide=1 (un léger affaissement reste presque du plané plein) et la creuse près de
-    # glide=0 (bras vraiment bas -> la chute augmente vite), sans changer les bornes (1 quand
-    # les poignets sont à hauteur d'épaule, 0 au-delà de `glide_arm_range_shoulders`).
+    # Ecart poignet/epaule, en largeurs d'epaules, au-dela duquel glide vaut 0.
+    glide_arm_range_shoulders: float = 1.4
+    # Exposant de la courbe de reponse de glide : aplatit pres de glide=1 (un leger affaissement
+    # des bras reste du plane plein) et creuse pres de glide=0.
     glide_falloff_power: float = 2.2
 
-    # Taux de chute vertical appliqué à `lift` en l'absence de battement, interpolé linéairement
-    # sur `glide` entre ces deux bornes.
-    # glide_full_sink : plané à fond (bras à l'horizontale) -> quasi horizontal, l'oiseau ne
-    # doit descendre que très légèrement (retour JPO : "presque rester droit verticalement mais
-    # descendre un tout petit peu"). Proche de 0 mais pas nul : un plané qui ne fait *jamais*
-    # perdre d'altitude ne se sent plus comme un plané.
-    # glide_none_dive : bras le long du corps -> piqué, doit se sentir clairement descendre mais
-    # sans être un décrochage brutal (retour JPO : moins violent que -1.0, qui saturait
-    # immédiatement `lift` au clamp bas dès que les bras étaient baissés).
-    glide_full_sink: float = -0.08   # bras à l'horizontale (glide=1) : plané quasi plat
-    glide_none_dive: float = -0.55   # bras le long du corps (glide=0) : piqué net mais pas un crash
+    # Taux de chute applique a `lift` hors battement, interpole lineairement sur `glide`.
+    glide_full_sink: float = -0.08   # bras a l'horizontale : plane quasi plat
+    glide_none_dive: float = -0.55   # bras le long du corps : pique net, pas un decrochage
 
     throttle_deadzone_m: float = 0.15
     throttle_range_m: float = 1.0  # +-1m autour de la distance neutre = +-1 en sortie
@@ -120,9 +93,9 @@ class GestureConfig:
 
 @dataclass
 class GestureState:
-    """État à maintenir d'un appel à l'autre, un par joueur verrouillé."""
+    """Un etat par joueur verrouille, maintenu d'un appel a l'autre."""
 
-    neutral_distance_m: float | None = None  # fixé à la calibration (posture glide 3s)
+    neutral_distance_m: float | None = None  # fixe a la calibration
     glide_value: float = 0.0
     lift_impulse: float = 0.0
     lift_impulse_started_at: float | None = None
@@ -131,7 +104,7 @@ class GestureState:
     glide_filter: OneEuroFilter = field(default_factory=OneEuroFilter)
     _prev_wrist_y: tuple[float, float] | None = None
     _prev_t: float | None = None
-    _flap_streak: int = 0  # frames consécutives au-dessus du seuil de vitesse (debounce)
+    _flap_streak: int = 0
 
 
 @dataclass
@@ -144,15 +117,10 @@ class GestureOutput:
 
 def _arm_raise(l_wrist_y, r_wrist_y, l_shoulder_y, r_shoulder_y, shoulder_width: float,
                max_range_shoulders: float, falloff_power: float = 1.0) -> float:
-    """Hauteur des bras, continue : 0.0 = le long du corps, 1.0 = tendus à l'horizontale.
+    """Hauteur des bras : 0.0 = le long du corps, 1.0 = tendus a l'horizontale.
 
-    Normalisé par la largeur d'épaules à l'image (pas un seuil fixe en coordonnées
-    normalisées) : cette largeur varie avec la distance au capteur exactement comme le
-    reste du squelette, donc le geste reste calibré pareil à 1m ou à 4m de la Kinect.
-
-    `falloff_power` > 1 courbe la réponse (cf. GestureConfig.glide_falloff_power) : tolérant
-    près de la posture cible (poignets à hauteur d'épaule), de plus en plus punitif au fur et
-    à mesure que les bras descendent.
+    Normalise par la largeur d'epaules a l'image, qui varie avec la distance au capteur
+    exactement comme le reste du squelette : le geste reste calibre pareil a 1m ou a 4m.
     """
     wrist_mid_y = (l_wrist_y + r_wrist_y) / 2.0
     shoulder_mid_y = (l_shoulder_y + r_shoulder_y) / 2.0
@@ -173,62 +141,40 @@ def update_gestures(
     r_wrist: tuple[float, float],
     distance_m: float,
 ) -> GestureOutput:
-    """Coordonnées normalisées image (x croît vers la droite, y croît vers le bas).
+    """Coordonnees normalisees image : x croit vers la droite, y croit vers le bas.
 
-    ⚠️ Convention MediaPipe : `L_*` désigne le côté **anatomique** du sujet. Une personne qui
-    fait face à la caméra a donc son épaule gauche du côté **droit de l'image** :
-    `l_shoulder[0] > r_shoulder[0]`. Calculer `dx` dans l'autre sens donne un angle proche de
-    180° pour un sujet parfaitement droit, et donc une saturation permanente de `lean`.
+    Convention MediaPipe : `L_*` designe le cote anatomique du sujet. Une personne face a la
+    camera a donc son epaule gauche du cote droit de l'image (`l_shoulder[0] > r_shoulder[0]`).
     """
 
-    # --- lean : inclinaison des BRAS (pas du buste) — geste type "ailerons" ---
-    # Bras droit qui monte + bras gauche qui descend = virage à gauche (lean < 0), et plus
-    # l'écart est marqué, plus le virage est prononcé. Même construction géométrique que
-    # l'ancienne version basée sur les épaules (angle de la ligne reliant les deux points),
-    # simplement appliquée aux poignets : ça réutilise directement la logique de signe déjà
-    # vérifiée par test_lean_sign_matches_player_intent.
-    #
-    # dx orienté L->R (donc positif, cf. convention MediaPipe ci-dessus) pour que l'angle
-    # reste petit autour de la posture neutre (bras symétriques).
+    # lean : inclinaison des bras facon ailerons. dx est oriente L->R (donc positif) pour que
+    # l'angle reste petit autour de la posture neutre.
     dx = l_wrist[0] - r_wrist[0]
     dy = l_wrist[1] - r_wrist[1]
-    angle_deg = math.degrees(math.atan2(dy, dx))  # 0° = poignets à la même hauteur
-    # angle > 0 <=> poignet GAUCHE du sujet plus bas (donc bras gauche baissé, droit levé)
-    # <=> le sujet "penche ses ailes" vers SA gauche, ce qui doit envoyer l'oiseau vers la
-    # gauche de l'écran (lean < 0) : d'où le signe, identique à l'ancienne version épaules.
+    angle_deg = math.degrees(math.atan2(dy, dx))
+    # angle > 0 <=> poignet gauche du sujet plus bas <=> le sujet penche ses ailes vers SA
+    # gauche, ce qui doit envoyer l'oiseau a gauche de l'ecran (lean < 0).
     lean_raw = _clamp(-_deadzone(angle_deg, config.lean_deadzone_deg, config.lean_max_deg))
     lean = _clamp(state.lean_filter(lean_raw, now))
 
-    # --- glide : hauteur des bras, continue, lissée par le même filtre One Euro que lean et
-    # throttle (moyenne mobile adaptative : lisse fort quand la posture est stable, sans retard
-    # perceptible dès qu'elle change vraiment — cf. commentaire sur OneEuroFilter en tête de
-    # fichier). Remplace l'ancienne rampe à vitesse fixe, incohérente avec le reste des gestes.
+    # glide : hauteur des bras, continue, lissee par le meme filtre que lean et throttle.
     shoulder_width = abs(l_shoulder[0] - r_shoulder[0])
     target = _arm_raise(l_wrist[1], r_wrist[1], l_shoulder[1], r_shoulder[1],
-                         shoulder_width, config.glide_arm_range_shoulders,
-                         config.glide_falloff_power)
+                        shoulder_width, config.glide_arm_range_shoulders,
+                        config.glide_falloff_power)
     state.glide_value = _clamp(state.glide_filter(target, now), 0.0, 1.0)
 
-    # --- lift : impulsion sur battement descendant (vitesse verticale des poignets) ---
+    # lift : comme un vrai oiseau, c'est le battement VERS LE BAS qui pousse sur l'air.
+    # `vy > 0` = poignets qui descendent ; un `abs(vy)` declencherait aussi sur la remontee
+    # des bras, qui n'est qu'un rearmement sans poussee.
     if state._prev_wrist_y is not None and state._prev_t is not None and dt > 1e-6:
         avg_wrist_y = (l_wrist[1] + r_wrist[1]) / 2.0
         prev_avg_y = (state._prev_wrist_y[0] + state._prev_wrist_y[1]) / 2.0
-        vy = (avg_wrist_y - prev_avg_y) / dt  # y croît vers le bas -> vy>0 = mouvement vers le bas
-        # Comme un vrai oiseau : c'est le battement VERS LE BAS qui pousse sur l'air et fait
-        # monter, pas la remontée des bras (qui n'est que le geste de "réarmement" entre deux
-        # battements, sans poussée). On détecte un mouvement descendant rapide et on le convertit
-        # en impulsion positive (montée) qui décroît ensuite sur `lift_window_s`.
-        # ⚠️ Sens du mouvement, pas seulement sa vitesse : `vy > 0` = poignets qui DESCENDENT
-        # (y croît vers le bas dans le repère image). Un `abs(vy)` déclencherait un battement
-        # sur n'importe quel mouvement rapide, y compris la remontée des bras entre deux
-        # battements, qui ne doit donner aucune impulsion.
+        vy = (avg_wrist_y - prev_avg_y) / dt
         if vy > config.lift_trigger_speed:
             state._flap_streak += 1
         else:
             state._flap_streak = 0
-        # Debounce : un pic de vitesse isolé (bruit de détection sur une seule frame) ne
-        # déclenche rien, il faut plusieurs frames consécutives — cf. commentaire sur
-        # lift_trigger_frames dans GestureConfig.
         if state._flap_streak >= config.lift_trigger_frames:
             state.lift_impulse = 1.0
             state.lift_impulse_started_at = now
@@ -244,24 +190,15 @@ def update_gestures(
     state._prev_wrist_y = (l_wrist[1], r_wrist[1])
     state._prev_t = now
 
-    # Chute liée à la posture des bras, continue entre les deux bornes de config ci-dessus :
-    # bras à l'horizontale (glide=1) -> plané net ; bras le long du corps (glide=0) -> piqué.
-    # ⚠️ Ne PAS combiner avec `max(lift_impulse, sink)` : lift_impulse vaut 0.0 au repos (pas
-    # négatif) et `max(0.0, sink)` renvoie alors 0.0 puisque sink est toujours négatif — ça
-    # annulait silencieusement tout le plané/piqué en dehors d'un battement (bug réel constaté :
-    # l'oiseau ne perdait jamais d'altitude en vol plané). Un battement prioritaire écrase donc
-    # explicitement la chute le temps de son impulsion, au lieu de rivaliser avec elle via max().
+    # Chute liee a la posture des bras. Ne PAS ecrire `max(lift_impulse, sink)` : lift_impulse
+    # vaut 0.0 au repos et sink est toujours negatif, ce qui annulerait tout le plane/pique.
     sink = config.glide_none_dive + (config.glide_full_sink - config.glide_none_dive) * state.glide_value
-    lift = state.lift_impulse if state.lift_impulse > 1e-3 else sink
-    lift = _clamp(lift)
+    lift = _clamp(state.lift_impulse if state.lift_impulse > 1e-3 else sink)
 
-    # --- throttle : distance relative à la distance neutre calibrée ---
+    # throttle : avancer = se rapprocher = distance plus petite que la neutre = throttle positif.
     if state.neutral_distance_m is None:
         throttle_raw = 0.0
     else:
-        # AGENTS.md : "Avancer/Reculer par rapport au Kinect -> Augmentation / Réduction de la
-        # vitesse". Avancer = se rapprocher = distance PLUS PETITE que la neutre, et doit donner
-        # un throttle POSITIF : d'où `neutral - distance` et non l'inverse.
         delta = state.neutral_distance_m - distance_m
         throttle_raw = _clamp(_deadzone(delta, config.throttle_deadzone_m, config.throttle_range_m))
     throttle = _clamp(state.throttle_filter(throttle_raw, now))

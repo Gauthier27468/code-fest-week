@@ -6,53 +6,39 @@ using System.Threading;
 using UnityEngine;
 
 /// <summary>
-/// Reçoit les commandes de vol émises par le bridge Python (Kinect) en UDP et les expose
-/// sous la même forme qu'un input clavier : un Vector3 (x = gauche/droite, y = altitude,
-/// z = vitesse), directement consommable par MoveBird.
-///
-/// Aucune scène à modifier : si personne n'a posé le composant à la main, il est créé
-/// automatiquement au lancement (voir AutoCreate) et exposé via <see cref="Instance"/>.
-/// MoveBird le consulte par ce biais.
-///
-/// Le clavier reste toujours fonctionnel : bridge coupé ou aucun joueur détecté,
-/// HasPlayer est false et le jeu retombe seul sur les touches.
+/// Recoit les commandes de vol du bridge Python (Kinect) en UDP et les expose comme un input
+/// clavier : un Vector3 (x = gauche/droite, y = altitude, z = vitesse) consommable par MoveBird.
+/// Se cree tout seul au lancement si la scene n'en contient pas. Bridge coupe ou aucun joueur
+/// detecte : HasPlayer est false et le jeu retombe sur le clavier.
 /// </summary>
 public class KinectInputSource : MonoBehaviour
 {
-    /// <summary>
-    /// Écouteur actif du jeu. Renseigné par le composant posé dans la scène s'il y en a un,
-    /// sinon par le bootstrap automatique. Null tant qu'aucune scène n'a fini de charger.
-    /// </summary>
     public static KinectInputSource Instance { get; private set; }
 
-    /// <summary>
-    /// Mettre à false (depuis un RuntimeInitializeOnLoadMethod BeforeSceneLoad) pour empêcher
-    /// la création automatique et gérer l'écouteur soi-même.
-    /// </summary>
+    /// <summary>Mettre a false avant le chargement de scene pour gerer l'ecouteur soi-meme.</summary>
     public static bool AutoBootstrap = true;
 
-    [Header("Réseau")]
-    [Tooltip("Doit correspondre au --port du bridge Python (défaut 7777).")]
+    [Header("Reseau")]
+    [Tooltip("Doit correspondre au --port du bridge Python (defaut 7777).")]
     public int port = 7777;
 
-    [Header("Fraîcheur des données")]
-    [Tooltip("Au-delà de ce délai sans paquet, on considère qu'il n'y a plus de joueur.")]
+    [Header("Fraicheur des donnees")]
+    [Tooltip("Au-dela de ce delai sans paquet, on considere qu'il n'y a plus de joueur.")]
     public float playerTimeoutSeconds = 0.25f;
 
-    [Tooltip("Au-delà de ce délai sans AUCUN paquet, le bridge Python est considéré mort.")]
+    [Tooltip("Au-dela de ce delai sans AUCUN paquet, le bridge Python est considere mort.")]
     public float bridgeTimeoutSeconds = 1.0f;
 
-    // --- Contrat réseau : doit rester synchronisé avec tools/kinect_bridge/kibird_bridge/protocol.py ---
+    // Contrat reseau : doit rester synchronise avec tools/kinect_bridge/kibird_bridge/protocol.py
     private const int HeaderSize = 43;
     private const int JointCount = 9;
     private const int JointSize = 16;
-    private const int PacketSize = HeaderSize + JointCount * JointSize; // 187
+    private const int PacketSize = HeaderSize + JointCount * JointSize;
     private const byte ProtocolVersion = 1;
     private const byte FlagPlayerPresent = 1 << 0;
     private const byte FlagInZone = 1 << 1;
-    private const byte FlagReplayMode = 1 << 2;
 
-    /// <summary>Noms des articulations, dans l'ordre du protocole (debug/affichage uniquement).</summary>
+    /// <summary>Noms des articulations, dans l'ordre du protocole (affichage de debug).</summary>
     public static readonly string[] JointNames =
     {
         "NOSE", "L_SHOULDER", "R_SHOULDER", "L_ELBOW", "R_ELBOW",
@@ -70,18 +56,15 @@ public class KinectInputSource : MonoBehaviour
         public double Timestamp;
         public bool PlayerPresent;
         public bool InZone;
-        public bool ReplayMode;
         public float Distance;
         public float Lean, Lift, Throttle, Glide;
         public float Confidence;
     }
 
-    // --- État partagé entre le thread réseau et le thread principal ---
-    // Le thread réseau n'appelle JAMAIS d'API Unity et ne lève aucun event : il se contente
-    // d'écrire ici. Tout le reste est lu depuis Update(), sur le thread principal.
-    /// <summary>Écart de séquence au-delà duquel on considère que le bridge Python a redémarré.</summary>
+    /// <summary>Ecart de sequence au-dela duquel on considere que le bridge Python a redemarre.</summary>
     private const long BridgeRestartSeqGap = 100;
 
+    // Etat partage : le thread reseau n'appelle aucune API Unity, il ecrit seulement ici.
     private readonly object _lock = new object();
     private Snapshot _pending;
     private readonly Joint[] _pendingJoints = new Joint[JointCount];
@@ -89,7 +72,7 @@ public class KinectInputSource : MonoBehaviour
     private long _lastSeq = -1;
     private double _lastPacketRealtime = double.NegativeInfinity;
 
-    // --- État lu par le jeu (thread principal uniquement) ---
+    // Etat lu par le jeu, thread principal uniquement.
     private Snapshot _current;
     private readonly Joint[] _currentJoints = new Joint[JointCount];
     private float _lastPacketTime = float.NegativeInfinity;
@@ -99,12 +82,12 @@ public class KinectInputSource : MonoBehaviour
     private Thread _thread;
     private volatile bool _running;
 
-    /// <summary>Un joueur est détecté, dans la zone, et les données sont fraîches.</summary>
+    /// <summary>Un joueur est detecte, dans la zone, et les donnees sont fraiches.</summary>
     public bool HasPlayer =>
         _current.PlayerPresent && _current.InZone &&
         (Time.realtimeSinceStartup - _lastPacketTime) < playerTimeoutSeconds;
 
-    /// <summary>Le bridge Python émet toujours (heartbeat), même sans joueur devant la Kinect.</summary>
+    /// <summary>Le bridge Python emet toujours, meme sans joueur devant la Kinect.</summary>
     public bool BridgeAlive =>
         (Time.realtimeSinceStartup - _lastPacketTime) < bridgeTimeoutSeconds;
 
@@ -115,20 +98,18 @@ public class KinectInputSource : MonoBehaviour
     public float Glide => _current.Glide;
     public float Confidence => _current.Confidence;
     public bool InZone => _current.InZone;
-    public bool ReplayMode => _current.ReplayMode;
     public uint Sequence => _current.Seq;
 
-    /// <summary>Latence bout-en-bout mesurée (capture Kinect -> réception Unity), en ms.</summary>
+    /// <summary>Latence bout-en-bout mesuree (capture Kinect -> reception Unity), en ms.</summary>
     public float LatencyMs => _latencyMs;
 
     /// <summary>Articulations brutes, pour l'overlay de debug. Ne pas modifier le contenu.</summary>
     public Joint[] Joints => _currentJoints;
 
     /// <summary>
-    /// Crée l'écouteur si la scène chargée n'en contient pas. Volontairement AfterSceneLoad :
-    /// un composant posé à la main dans la scène (avec ses réglages) doit gagner sur celui-ci.
-    /// Ne tourne qu'une fois par lancement, et l'objet survit aux rechargements de scène —
-    /// le port UDP n'est donc pas relié à chaque redémarrage de partie.
+    /// Cree l'ecouteur si la scene chargee n'en contient pas. AfterSceneLoad pour qu'un composant
+    /// pose a la main (avec ses reglages) gagne sur celui-ci. L'objet survit aux rechargements de
+    /// scene : le port UDP n'est pas relie a chaque redemarrage de partie.
     /// </summary>
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void AutoCreate()
@@ -137,7 +118,6 @@ public class KinectInputSource : MonoBehaviour
 
         var go = new GameObject("KinectInput (auto)");
         go.AddComponent<KinectInputSource>();
-        // Overlay masqué par défaut (on est en configuration JPO), F1 pour l'afficher.
         go.AddComponent<KinectDebugOverlay>().visible = false;
         DontDestroyOnLoad(go);
     }
@@ -146,10 +126,9 @@ public class KinectInputSource : MonoBehaviour
     {
         if (Instance != null && Instance != this)
         {
-            // Deux écouteurs relieraient le même port : le second volerait une partie des
-            // paquets au premier, ce qui se traduirait par des saccades difficiles à diagnostiquer.
-            Debug.LogWarning($"[KinectInput] Un KinectInputSource existe déjà : '{name}' est " +
-                             "désactivé pour ne pas ouvrir le port UDP deux fois.");
+            // Deux ecouteurs relieraient le meme port : le second volerait une partie des paquets.
+            Debug.LogWarning($"[KinectInput] Un KinectInputSource existe deja : '{name}' est " +
+                             "desactive pour ne pas ouvrir le port UDP deux fois.");
             enabled = false;
             return;
         }
@@ -173,7 +152,7 @@ public class KinectInputSource : MonoBehaviour
 
     private void OnApplicationQuit()
     {
-        // Sans cette fermeture, le port reste pris entre deux Play dans l'Éditeur.
+        // Sans cette fermeture, le port reste pris entre deux Play dans l'Editeur.
         StopReceiver();
     }
 
@@ -185,20 +164,18 @@ public class KinectInputSource : MonoBehaviour
         {
             _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             _socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            _socket.ReceiveTimeout = 500; // permet au thread de vérifier _running régulièrement
+            _socket.ReceiveTimeout = 500; // permet au thread de verifier _running regulierement
             _socket.Bind(new IPEndPoint(IPAddress.Loopback, port));
         }
         catch (SocketException e)
         {
             Debug.LogError($"[KinectInput] Impossible d'ouvrir le port UDP {port} : {e.Message}. " +
-                           "Un autre process l'utilise-t-il (un monitor Python, une session Unity restée ouverte) ?");
+                           "Un autre process l'utilise-t-il ?");
             return;
         }
 
         lock (_lock)
         {
-            // Repartir propre à chaque Play : sinon le seq d'une session précédente ferait
-            // rejeter les premiers paquets de la nouvelle.
             _lastSeq = -1;
             _hasPending = false;
         }
@@ -213,7 +190,7 @@ public class KinectInputSource : MonoBehaviour
         _running = false;
         if (_socket != null)
         {
-            try { _socket.Close(); } catch { /* socket déjà fermée */ }
+            try { _socket.Close(); } catch { }
             _socket = null;
         }
         if (_thread != null)
@@ -224,9 +201,8 @@ public class KinectInputSource : MonoBehaviour
     }
 
     /// <summary>
-    /// Boucle du thread réseau. Elle consomme les paquets aussi vite qu'ils arrivent et ne
-    /// conserve que le plus récent : sans ça, dès que Unity descend sous 30 FPS, une file
-    /// s'accumulerait et ajouterait une latence qui ne redescendrait jamais.
+    /// Consomme les paquets aussi vite qu'ils arrivent et ne conserve que le plus recent : sans
+    /// ca, des que Unity descend sous 30 FPS une file s'accumule et la latence ne redescend plus.
     /// </summary>
     private void ReceiveLoop()
     {
@@ -242,11 +218,11 @@ public class KinectInputSource : MonoBehaviour
             }
             catch (SocketException)
             {
-                continue; // timeout de réception, ou socket fermée pendant l'arrêt
+                continue; // timeout de reception, ou socket fermee pendant l'arret
             }
             catch (ObjectDisposedException)
             {
-                return; // arrêt en cours
+                return;
             }
 
             if (received < PacketSize) continue;
@@ -260,10 +236,8 @@ public class KinectInputSource : MonoBehaviour
 
             lock (_lock)
             {
-                // Les paquets UDP peuvent arriver dans le désordre : on ignore tout retardataire.
-                // Mais un seq très inférieur au dernier reçu signifie que le bridge Python a
-                // redémarré (son compteur repart à 0) : il faut alors repartir de zéro, sinon
-                // Unity rejetterait définitivement tous les paquets du nouveau bridge.
+                // Un seq tres inferieur au dernier recu signifie que le bridge a redemarre
+                // (compteur reparti a 0) : sans ce cas, Unity rejetterait tous ses paquets.
                 bool bridgeRestarted = seq + BridgeRestartSeqGap < _lastSeq;
                 if (!bridgeRestarted && seq <= _lastSeq) continue;
                 _lastSeq = seq;
@@ -273,7 +247,6 @@ public class KinectInputSource : MonoBehaviour
                     BinaryPrimitives.ReadInt64LittleEndian(span.Slice(10, 8)));
                 _pending.PlayerPresent = (flags & FlagPlayerPresent) != 0;
                 _pending.InZone = (flags & FlagInZone) != 0;
-                _pending.ReplayMode = (flags & FlagReplayMode) != 0;
                 _pending.Distance = ReadFloat(span, 18);
                 _pending.Lean = ReadFloat(span, 22);
                 _pending.Lift = ReadFloat(span, 26);

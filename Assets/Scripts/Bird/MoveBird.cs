@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using KiBird.FX;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
@@ -664,81 +665,7 @@ public class MoveBird : MonoBehaviour
             return;
         }
 
-        // Génération dynamique du burst de plumes
-        GameObject fxObj = new GameObject("FeatherExplosion");
-        fxObj.transform.position = transform.position;
-        fxObj.transform.rotation = Quaternion.identity;
-
-        ParticleSystem ps = fxObj.AddComponent<ParticleSystem>();
-        ParticleSystemRenderer psr = fxObj.GetComponent<ParticleSystemRenderer>();
-
-        Material featherMat = null;
-#if UNITY_EDITOR
-        featherMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Generated/M_Feather.mat");
-#endif
-        if (featherMat == null)
-        {
-            Shader pShader = Shader.Find("Universal Render Pipeline/Particles/Unlit") ?? Shader.Find("Particles/Standard Unlit");
-            if (pShader != null) featherMat = new Material(pShader);
-        }
-        if (featherMat != null)
-        {
-            psr.material = featherMat;
-        }
-
-        var main = ps.main;
-        main.duration = 1.0f;
-        main.loop = false;
-        main.startLifetime = new ParticleSystem.MinMaxCurve(1.8f, 3.2f);
-        main.startSpeed = new ParticleSystem.MinMaxCurve(2.5f, 6.5f);
-        main.startSize = new ParticleSystem.MinMaxCurve(0.35f, 0.75f);
-        main.startRotation = new ParticleSystem.MinMaxCurve(0f, 360f * Mathf.Deg2Rad);
-        main.gravityModifier = 0.12f; // Flottement aérien naturel de plumes
-        main.simulationSpace = ParticleSystemSimulationSpace.World;
-        main.stopAction = ParticleSystemStopAction.Destroy;
-
-        var emission = ps.emission;
-        emission.rateOverTime = 0;
-        emission.SetBursts(new ParticleSystem.Burst[] {
-            new ParticleSystem.Burst(0.0f, (short)35, (short)55)
-        });
-
-        var shape = ps.shape;
-        shape.shapeType = ParticleSystemShapeType.Sphere;
-        shape.radius = 0.5f;
-
-        var col = ps.colorOverLifetime;
-        col.enabled = true;
-        Gradient grad = new Gradient();
-        grad.SetKeys(
-            new GradientColorKey[] {
-                new GradientColorKey(Color.white, 0.0f),
-                new GradientColorKey(new Color(0.9f, 0.95f, 1f), 0.5f),
-                new GradientColorKey(new Color(0.75f, 0.85f, 0.95f), 1.0f)
-            },
-            new GradientAlphaKey[] {
-                new GradientAlphaKey(1.0f, 0.0f),
-                new GradientAlphaKey(0.85f, 0.65f),
-                new GradientAlphaKey(0.0f, 1.0f)
-            }
-        );
-        col.color = grad;
-
-        var rot = ps.rotationOverLifetime;
-        rot.enabled = true;
-        rot.z = new ParticleSystem.MinMaxCurve(-150f * Mathf.Deg2Rad, 150f * Mathf.Deg2Rad);
-
-        var sol = ps.sizeOverLifetime;
-        sol.enabled = true;
-        AnimationCurve sizeCurve = new AnimationCurve();
-        sizeCurve.AddKey(0.0f, 0.6f);
-        sizeCurve.AddKey(0.15f, 1.0f);
-        sizeCurve.AddKey(0.75f, 1.0f);
-        sizeCurve.AddKey(1.0f, 0.0f);
-        sol.size = new ParticleSystem.MinMaxCurve(1.0f, sizeCurve);
-
-        ps.Play();
-        Destroy(fxObj, 4.0f);
+        ParticleBurst.Play(transform.position, ParticleBurst.Feathers);
     }
 
     private System.Collections.IEnumerator FollowFallingBird(Transform camTransform)

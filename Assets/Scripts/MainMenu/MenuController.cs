@@ -5,11 +5,11 @@ using UnityEngine.UI;
 
 namespace KiBird.MainMenu
 {
-    // Orchestre l'écran de démarrage : anime la silhouette du joueur en fonction de
-    // l'entrée courante, affiche le message d'invite et gère le "maintien de la pose"
-    // pour démarrer une partie. Le menu vit dans la même scène que le jeu (Blocks.unity) :
-    // au démarrage il fige l'oiseau (MoveBird désactivé) pendant que le reste du jeu tourne
-    // déjà normalement, puis à la fin du décompte il se masque et relâche l'oiseau.
+    /// <summary>
+    /// Écran de démarrage. Le menu vit dans la même scène que le jeu : il fige l'oiseau pendant
+    /// que le décor tourne déjà, puis le relâche quand la posture bras tendus a été tenue
+    /// holdDurationToStart secondes — au clavier (Espace) ou devant la Kinect, indifféremment.
+    /// </summary>
     public class MenuController : MonoBehaviour
     {
         [Header("Références")]
@@ -22,8 +22,7 @@ namespace KiBird.MainMenu
         [SerializeField] private Text lastScoreText;
         [Tooltip("Texte affichant le meilleur score (Best Score).")]
         [SerializeField] private Text bestScoreText;
-        [Tooltip("Titre affiché au-dessus du score (ex: BEST SCORE).")]
-        [SerializeField] private Text scoreTitleText;
+        [Tooltip("Texte affichant le classement des meilleurs scores du poste.")]
         [SerializeField] private Text leaderboardText;
         [SerializeField] private Text promptText;
 
@@ -33,44 +32,33 @@ namespace KiBird.MainMenu
         [SerializeField] private GameObject menuVisualRoot;
         [SerializeField] private GameObject menuGameRoot;
 
-        private string InstructionMessage;
-
+        private string instructionMessage;
         private float holdTimer;
         private bool isStarting;
         private MoveBird birdMovement;
 
         public void Configure(DemoKeyboardInput input, KinectStartInputSource kinectInput,
-            SilhouetteRig silhouette, Text lastScore, Text bestScore, Text prompt, Image progressFill,
-            GameObject visualRoot, GameObject gameRoot = null)
+            SilhouetteRig silhouette, Text lastScore, Text bestScore, Text leaderboard, Text prompt,
+            Image progressFill, GameObject visualRoot, GameObject gameRoot = null)
         {
             inputProvider = input;
             kinectInputProvider = kinectInput;
             playerSilhouette = silhouette;
             lastScoreText = lastScore;
             bestScoreText = bestScore;
+            leaderboardText = leaderboard;
             promptText = prompt;
             startProgressFill = progressFill;
             menuVisualRoot = visualRoot;
             if (gameRoot != null) menuGameRoot = gameRoot;
         }
 
-        public void Configure(DemoKeyboardInput input, KinectStartInputSource kinectInput,
-            SilhouetteRig silhouette, Text lastScore, Text leaderboard, Text prompt, Image progressFill,
-            GameObject visualRoot)
-        {
-            Configure(input, kinectInput, silhouette, lastScore, null, prompt, progressFill, visualRoot);
-            leaderboardText = leaderboard;
-        }
-
         private void Start()
         {
             RefreshScores();
-            // Le personnage central est un badge décoratif : il reste toujours en pose T
-            // (bras à l'horizontale), seul l'anneau de progression réagit à la pose tenue.
-            playerSilhouette.SetPoseInstant(BirdPose.Glide);
 
-            // Le jeu tourne déjà (blocs, hoops, environnement...) mais l'oiseau reste immobile
-            // tant que le menu n'a pas laissé la main.
+            if (playerSilhouette != null) playerSilhouette.ApplyGlidePose();
+
             birdMovement = Object.FindFirstObjectByType<MoveBird>();
             if (birdMovement != null)
             {
@@ -78,37 +66,28 @@ namespace KiBird.MainMenu
             }
             else
             {
-                // Si ça ne trouve rien, l'oiseau reste piloté dès le chargement de la scène :
-                // symptôme typique d'un "démarrage automatique" alors que le menu est affiché.
                 Debug.LogWarning("[MenuController] Aucun MoveBird trouvé dans la scène : " +
-                                  "l'oiseau ne sera pas bloqué pendant le menu.");
+                                 "l'oiseau ne sera pas bloqué pendant le menu.");
             }
 
-            // Le menu visuel est actif, le menu de jeu (score, temps de survie) est masqué.
             if (menuVisualRoot != null) menuVisualRoot.SetActive(true);
             if (menuGameRoot != null) menuGameRoot.SetActive(false);
 
-            InstructionMessage = promptText.text;
+            if (promptText != null) instructionMessage = promptText.text;
         }
 
         private void Update()
         {
             if (isStarting) return;
 
-            // Deux façons indépendantes de démarrer : clavier (Espace, debug/animateur) ou pose
-            // "bras en T" devant la Kinect. Il suffit que l'une des deux soit tenue 3 secondes.
-            bool keyboardCharging = inputProvider != null && inputProvider.IsPlayerPresent &&
-                                     inputProvider.CurrentPose == BirdPose.Glide;
-            bool kinectCharging = kinectInputProvider != null && kinectInputProvider.IsPlayerPresent &&
-                                   kinectInputProvider.CurrentPose == BirdPose.Glide;
-            bool charging = keyboardCharging || kinectCharging;
+            // Deux façons indépendantes de charger le démarrage : Espace, ou pose bras en T.
+            bool charging = (inputProvider != null && inputProvider.IsGlideHeld) ||
+                            (kinectInputProvider != null && kinectInputProvider.IsGlideHeld);
 
             UpdateStartProgress(charging);
             UpdatePrompt(charging);
         }
 
-        // Tant que le joueur ne tend pas les bras : instruction fixe.
-        // Dès qu'il tend les bras (pose T) : décompte "3...", "2...", "1..." jusqu'au lancement.
         private void UpdatePrompt(bool charging)
         {
             if (promptText == null) return;
@@ -121,7 +100,7 @@ namespace KiBird.MainMenu
             }
             else
             {
-                promptText.text = InstructionMessage;
+                promptText.text = instructionMessage;
             }
         }
 
@@ -141,14 +120,14 @@ namespace KiBird.MainMenu
         private void StartGame()
         {
             isStarting = true;
-            // Exactement à la fin des 3 secondes tenues : on relâche l'oiseau et on masque le
-            // menu tout de suite, pas de délai supplémentaire ni de changement de scène.
-            if (birdMovement != null) birdMovement.enabled = true;
             if (menuVisualRoot != null) menuVisualRoot.SetActive(false);
             if (menuGameRoot != null) menuGameRoot.SetActive(true);
 
-            // Start bird music !
-            birdMovement.PlayMainMusic();
+            if (birdMovement != null)
+            {
+                birdMovement.enabled = true;
+                birdMovement.PlayMainMusic();
+            }
         }
 
         private void RefreshScores()
@@ -166,6 +145,12 @@ namespace KiBird.MainMenu
             if (leaderboardText != null)
             {
                 List<int> scores = ScoreManager.GetTopScores();
+                if (scores.Count == 0)
+                {
+                    leaderboardText.text = "—";
+                    return;
+                }
+
                 var sb = new StringBuilder();
                 for (int i = 0; i < scores.Count; i++)
                 {

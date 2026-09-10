@@ -1,11 +1,8 @@
 using UnityEngine;
 
 /// <summary>
-/// Zone de spawn aléatoire pour cerceaux (KiBird).
-/// - Définit un volume (zoneSize) dans lequel un cerceau apparaîtra de manière aléatoire.
-/// - L'orientation du cerceau reste toujours fixée (face au joueur arrivant le long de l'axe Z).
-/// - Peut être placée en plusieurs exemplaires dans chaque préfab de bloc environnemental.
-/// - Se nettoie automatiquement quand le bloc est détruit par MapGenerator.
+/// Volume dans lequel un cerceau apparaît à une position aléatoire, toujours orienté face au
+/// joueur. Plusieurs zones peuvent être posées dans un même préfab de bloc.
 /// </summary>
 [ExecuteAlways]
 public class HoopSpawnZone : MonoBehaviour
@@ -61,9 +58,7 @@ public class HoopSpawnZone : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Instancie le cerceau à des coordonnées aléatoires à l'intérieur de la zone.
-    /// </summary>
+    /// <summary>Instancie le cerceau à une position aléatoire dans la zone.</summary>
     public GameObject SpawnHoop()
     {
         if (hoopPrefab == null)
@@ -76,20 +71,17 @@ public class HoopSpawnZone : MonoBehaviour
             }
         }
 
-        // Test de probabilité d'apparition
         if (spawnProbability < 1f && Random.value > spawnProbability)
         {
             return null;
         }
 
-        // Détruire un éventuel cerceau existant pour éviter les doublons
         if (spawnedHoopInstance != null)
         {
             if (Application.isPlaying) Destroy(spawnedHoopInstance);
             else DestroyImmediate(spawnedHoopInstance);
         }
 
-        // Coordonnées aléatoires dans la boîte locale
         Vector3 randomLocalPos = new Vector3(
             Random.Range(-zoneSize.x * 0.5f, zoneSize.x * 0.5f),
             Random.Range(-zoneSize.y * 0.5f, zoneSize.y * 0.5f),
@@ -98,12 +90,10 @@ public class HoopSpawnZone : MonoBehaviour
 
         Vector3 spawnWorldPos = transform.TransformPoint(randomLocalPos);
 
-        // Orientation fixée face au joueur
         Quaternion spawnRotation = keepFacingPlayer
             ? Quaternion.Euler(fixedEulerRotation)
             : transform.rotation * Quaternion.Euler(fixedEulerRotation);
 
-        // Instanciation sous ce Transform pour que le cerceau soit géré avec le bloc parent
         spawnedHoopInstance = Instantiate(hoopPrefab, spawnWorldPos, spawnRotation, transform);
         spawnedHoopInstance.name = $"Hoop_Spawned ({name})";
 
@@ -123,15 +113,12 @@ public class HoopSpawnZone : MonoBehaviour
 
         Gizmos.matrix = transform.localToWorldMatrix;
 
-        // Volume translucide
         Gizmos.color = gizmoColor;
         Gizmos.DrawCube(Vector3.zero, zoneSize);
 
-        // Contour fil de fer
         Gizmos.color = new Color(gizmoColor.r, gizmoColor.g, gizmoColor.b, 0.9f);
         Gizmos.DrawWireCube(Vector3.zero, zoneSize);
 
-        // Repère au centre
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireSphere(Vector3.zero, 0.3f);
     }

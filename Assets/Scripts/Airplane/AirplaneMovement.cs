@@ -1,5 +1,6 @@
-﻿using UnityEngine;
+using UnityEngine;
 
+/// <summary>Avion de décor : translation continue et bruit de moteur spatialisé.</summary>
 public class AirplaneMovement : MonoBehaviour
 {
     [Header("Movement")]
@@ -81,10 +82,5 @@ public class AirplaneMovement : MonoBehaviour
         audioSource.maxDistance = maxDistance;
         audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
         audioSource.dopplerLevel = dopplerLevel;
-    }
-
-    public void SetSpeed(float newSpeed)
-    {
-        speed = Mathf.Max(0f, newSpeed);
     }
 }

@@ -51,7 +51,7 @@ def test_cs_offsets_decode_a_real_packet():
     )
     src = protocol.SkeletonPacket(
         seq=123456, timestamp=1788859689.25,
-        player_present=True, in_zone=True, replay_mode=True,
+        player_present=True, in_zone=True,
         distance=2.47, lean=-0.42, lift=0.75, throttle=0.31, glide=0.9,
         confidence=0.88, joints=joints,
     )
@@ -69,7 +69,6 @@ def test_cs_offsets_decode_a_real_packet():
     flags = u8(CS_OFFSETS["flags"][0])
     assert flags & 0x01, "bit0 = playerPresent"
     assert flags & 0x02, "bit1 = inZone"
-    assert flags & 0x04, "bit2 = replayMode"
 
     assert u32(CS_OFFSETS["seq"][0]) == 123456
     assert abs(f64(CS_OFFSETS["timestamp"][0]) - 1788859689.25) < 1e-6

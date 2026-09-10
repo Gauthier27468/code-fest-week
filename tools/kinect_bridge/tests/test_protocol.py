@@ -23,7 +23,6 @@ def test_roundtrip_full():
         timestamp=1234567890.123,
         player_present=True,
         in_zone=True,
-        replay_mode=False,
         distance=2.5,
         lean=-0.75,
         lift=0.3,
@@ -40,7 +39,6 @@ def test_roundtrip_full():
     assert abs(decoded.timestamp - 1234567890.123) < 1e-6
     assert decoded.player_present is True
     assert decoded.in_zone is True
-    assert decoded.replay_mode is False
     assert abs(decoded.distance - 2.5) < 1e-6
     assert abs(decoded.lean - (-0.75)) < 1e-6
     assert abs(decoded.lift - 0.3) < 1e-6
@@ -58,12 +56,6 @@ def test_heartbeat_no_player():
     decoded = protocol.unpack(data)
     assert decoded.player_present is False
     assert len(data) == protocol.PACKET_SIZE
-
-
-def test_replay_flag():
-    pkt = protocol.SkeletonPacket(seq=1, replay_mode=True)
-    decoded = protocol.unpack(protocol.pack(pkt))
-    assert decoded.replay_mode is True
 
 
 def test_rejects_bad_magic():

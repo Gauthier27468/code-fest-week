@@ -1,10 +1,8 @@
-"""Contrat réseau UDP Kinect -> Unity (KiBird).
+"""Contrat reseau UDP Kinect -> Unity.
 
-Format binaire fixe, little-endian, aucune allocation dynamique variable :
-un paquet = un état complet (aucun état accumulé côté Unity).
-
-En-tête (43 octets) + corps (9 articulations x 16 octets = 144 octets) = 187 octets.
-Voir implementation_plan.md section 2 pour la source de vérité fonctionnelle de ce contrat.
+Format binaire fixe, little-endian : un paquet = un etat complet.
+En-tete (43 octets) + 9 articulations x 16 octets = 187 octets.
+Doit rester synchronise avec Assets/Scripts/KinectInput/KinectInputSource.cs.
 """
 from __future__ import annotations
 
@@ -15,8 +13,6 @@ from dataclasses import dataclass, field
 MAGIC = b"KBRD"
 VERSION = 1
 
-# Ordre fixe des articulations transmises (utilisé pour le debug visuel uniquement,
-# le gameplay ne consomme que les champs de l'en-tête).
 JOINT_NAMES = (
     "NOSE",
     "L_SHOULDER",
@@ -30,17 +26,14 @@ JOINT_NAMES = (
 )
 JOINT_COUNT = len(JOINT_NAMES)
 
-# Flags (bitfield sur 1 octet)
 FLAG_PLAYER_PRESENT = 1 << 0
 FLAG_IN_ZONE = 1 << 1
-FLAG_REPLAY_MODE = 1 << 2
 
-# '<' = little-endian, sans padding d'alignement (obligatoire pour un format fixe stable)
 HEADER_FORMAT = "<4sBBIdffffffB"
-HEADER_SIZE = struct.calcsize(HEADER_FORMAT)  # 43 octets
-JOINT_FORMAT = "<ffff"  # x, y, z, confidence
-JOINT_SIZE = struct.calcsize(JOINT_FORMAT)  # 16 octets
-PACKET_SIZE = HEADER_SIZE + JOINT_COUNT * JOINT_SIZE  # 187 octets
+HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+JOINT_FORMAT = "<ffff"
+JOINT_SIZE = struct.calcsize(JOINT_FORMAT)
+PACKET_SIZE = HEADER_SIZE + JOINT_COUNT * JOINT_SIZE
 
 assert HEADER_SIZE == 43, f"HEADER_SIZE attendu 43, obtenu {HEADER_SIZE}"
 assert PACKET_SIZE == 187, f"PACKET_SIZE attendu 187, obtenu {PACKET_SIZE}"
@@ -56,13 +49,10 @@ class Joint:
 
 @dataclass
 class SkeletonPacket:
-    """Représentation Python d'un paquet. `seq` est assigné par l'appelant (compteur global)."""
-
     seq: int = 0
     timestamp: float = field(default_factory=time.time)
     player_present: bool = False
     in_zone: bool = False
-    replay_mode: bool = False
     distance: float = 0.0
     lean: float = 0.0
     lift: float = 0.0
@@ -76,19 +66,16 @@ class SkeletonPacket:
     def __post_init__(self) -> None:
         if len(self.joints) != JOINT_COUNT:
             raise ValueError(
-                f"SkeletonPacket attend {JOINT_COUNT} articulations, reçu {len(self.joints)}"
+                f"SkeletonPacket attend {JOINT_COUNT} articulations, recu {len(self.joints)}"
             )
 
 
 def pack(packet: SkeletonPacket) -> bytes:
-    """Sérialise un SkeletonPacket en 187 octets binaires. Zéro JSON, zéro allocation variable."""
     flags = 0
     if packet.player_present:
         flags |= FLAG_PLAYER_PRESENT
     if packet.in_zone:
         flags |= FLAG_IN_ZONE
-    if packet.replay_mode:
-        flags |= FLAG_REPLAY_MODE
 
     header = struct.pack(
         HEADER_FORMAT,
@@ -116,7 +103,7 @@ def pack(packet: SkeletonPacket) -> bytes:
 
 
 def unpack(data: bytes) -> SkeletonPacket:
-    """Désérialise 187 octets en SkeletonPacket. Lève ValueError si le paquet est invalide."""
+    """Leve ValueError si le paquet est invalide."""
     if len(data) < HEADER_SIZE:
         raise ValueError(f"Paquet trop court : {len(data)} < {HEADER_SIZE} octets")
 
@@ -138,7 +125,7 @@ def unpack(data: bytes) -> SkeletonPacket:
     if magic != MAGIC:
         raise ValueError(f"Magic invalide : {magic!r} (attendu {MAGIC!r})")
     if version != VERSION:
-        raise ValueError(f"Version de protocole non supportée : {version}")
+        raise ValueError(f"Version de protocole non supportee : {version}")
 
     expected_size = HEADER_SIZE + joint_count * JOINT_SIZE
     if len(data) < expected_size:
@@ -158,7 +145,6 @@ def unpack(data: bytes) -> SkeletonPacket:
         timestamp=timestamp,
         player_present=bool(flags & FLAG_PLAYER_PRESENT),
         in_zone=bool(flags & FLAG_IN_ZONE),
-        replay_mode=bool(flags & FLAG_REPLAY_MODE),
         distance=distance,
         lean=lean,
         lift=lift,

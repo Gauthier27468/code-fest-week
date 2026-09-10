@@ -9,18 +9,9 @@ using Debug = UnityEngine.Debug;
 
 /// <summary>
 /// Gèle le bridge Python en binaire autonome (PyInstaller) et le dépose dans les StreamingAssets
-/// du build, juste après que Unity l'a produit.
-///
-/// Objectif : un seul dossier à copier sur la machine de démo. Plus besoin de trimballer
-/// tools/kinect_bridge à côté de l'exécutable, ni d'avoir Python ou uv installés là-bas.
-///
-/// Pourquoi en POST-process et pas en pre-process : mettre les ~365 Mo du bundle dans
-/// Assets/StreamingAssets ferait générer à Unity des milliers de fichiers .meta et ralentirait
-/// l'éditeur à chaque import. En post-process on écrit directement dans le dossier de build, sans
-/// jamais faire transiter le bundle par le projet.
-///
-/// La compilation prend ~20 s. Pour l'éviter sur des builds de test rapides, définir la variable
-/// d'environnement KIBIRD_SKIP_BRIDGE_BUILD=1 avant de lancer Unity.
+/// du build : un seul dossier à copier sur la machine de démo, sans Python ni uv installés.
+/// En POST-process pour ne jamais faire transiter les ~365 Mo du bundle par Assets/, ce qui
+/// génèrerait des milliers de .meta. KIBIRD_SKIP_BRIDGE_BUILD=1 saute l'étape (~20 s).
 /// </summary>
 public class KinectBridgeBuildStep : IPostprocessBuildWithReport
 {
@@ -28,16 +19,14 @@ public class KinectBridgeBuildStep : IPostprocessBuildWithReport
     private const string BuildScriptRelativePath = "tools/kinect_bridge/build_bridge.sh";
     private const string DestFolderName = "kinect_bridge";
 
-    // Assez large pour une compilation à froid (téléchargement du modèle + venv à créer) sans
-    // laisser l'éditeur bloqué indéfiniment si PyInstaller part en vrille.
+    // Assez large pour une compilation à froid (modèle à télécharger, venv à créer).
     private const int TimeoutMs = 10 * 60 * 1000;
 
     public int callbackOrder => 0;
 
     public void OnPostprocessBuild(BuildReport report)
     {
-        // Le bridge est un binaire Linux natif (freenect + libfreenect) : le geler n'a de sens
-        // que pour un build Linux, la cible de la machine de démo.
+        // Binaire Linux natif : le geler n'a de sens que pour un build Linux.
         if (report.summary.platform != BuildTarget.StandaloneLinux64)
         {
             return;
@@ -60,8 +49,7 @@ public class KinectBridgeBuildStep : IPostprocessBuildWithReport
         string buildScript = Path.Combine(projectRoot, BuildScriptRelativePath);
         if (!File.Exists(buildScript))
         {
-            // Poste de dev sans le dossier des outils : on n'a rien à geler, et le jeu reste
-            // parfaitement jouable au clavier. Pas de quoi faire échouer le build.
+            // Poste de dev sans le dossier des outils : rien à geler, le clavier suffit.
             Debug.LogWarning($"[KinectBridge] '{BuildScriptRelativePath}' introuvable : bridge non " +
                              "embarqué, le build fonctionnera au clavier uniquement.");
             return;
@@ -78,11 +66,8 @@ public class KinectBridgeBuildStep : IPostprocessBuildWithReport
         RunBuildScript(buildScript, destination);
     }
 
-    /// <summary>
-    /// &lt;dossier du build&gt;/&lt;Exécutable&gt;_Data/StreamingAssets/kinect_bridge, déduit du chemin de
-    /// l'exécutable produit : Unity nomme le dossier de données d'après lui, pas d'après
-    /// Application.productName (qui peut contenir des espaces ou différer).
-    /// </summary>
+    /// <summary>Déduit du chemin de l'exécutable produit : Unity nomme le dossier de données
+    /// d'après lui, pas d'après Application.productName.</summary>
     private static string ResolveStreamingAssetsPath(BuildReport report)
     {
         string outputPath = report.summary.outputPath;
@@ -117,8 +102,7 @@ public class KinectBridgeBuildStep : IPostprocessBuildWithReport
                     throw new BuildFailedException("[KinectBridge] Impossible de démarrer build_bridge.sh.");
                 }
 
-                // Lecture avant WaitForExit : les deux flux sont lus jusqu'au bout, sinon un
-                // bundle bavard peut saturer le tampon du pipe et bloquer PyInstaller pour de bon.
+                // Lecture avant WaitForExit : sinon un bundle bavard sature le tampon du pipe.
                 string stdout = process.StandardOutput.ReadToEnd();
                 string stderr = process.StandardError.ReadToEnd();
 
@@ -133,8 +117,7 @@ public class KinectBridgeBuildStep : IPostprocessBuildWithReport
 
                 if (process.ExitCode != 0)
                 {
-                    // Échec dur : un build de JPO sans bridge est inutilisable, mieux vaut le
-                    // savoir tout de suite que le découvrir devant les visiteurs.
+                    // Échec dur : un build sans bridge est inutilisable le jour J.
                     throw new BuildFailedException(
                         $"[KinectBridge] build_bridge.sh a échoué (code {process.ExitCode}) :\n{stderr.Trim()}\n" +
                         $"Pour builder quand même sans bridge, définir {SkipEnvVar}=1.");
