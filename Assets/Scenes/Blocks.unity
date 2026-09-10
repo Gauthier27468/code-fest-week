@@ -2076,9 +2076,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7eb231e1a5a6427ea8df50801e992579, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameOverUI
+  autoRestart: 1
   autoResetDelay: 5
   allowInstantRestartKeys: 0
   rootPanel: {fileID: 320345498}
+  gameMenuRoot: {fileID: 1650253322}
   statusText: {fileID: 1335180645}
   titleText: {fileID: 1461325452}
   scoreLabelText: {fileID: 0}
@@ -2216,7 +2218,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 1
     m_LineSpacing: 1
-  m_Text: NOUVEAU VOL DANS 5s
+  m_Text: 
 --- !u!1 &551658754
 GameObject:
   m_ObjectHideFlags: 0
@@ -2675,7 +2677,7 @@ MonoBehaviour:
   m_PreserveAspect: 0
   m_FillCenter: 1
   m_FillMethod: 0
-  m_FillAmount: 1
+  m_FillAmount: 0
   m_FillClockwise: 1
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
@@ -3736,7 +3738,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Text
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 0.94, b: 0.76, a: 1}
+  m_Color: {r: 1, g: 0.94, b: 0.75, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -5048,6 +5050,7 @@ GameObject:
   - component: {fileID: 1335180646}
   - component: {fileID: 1335180645}
   - component: {fileID: 1335180644}
+  - component: {fileID: 1335180647}
   m_Layer: 0
   m_Name: StatusText
   m_TagString: Untagged
@@ -5102,7 +5105,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Text
   m_Material: {fileID: 0}
-  m_Color: {r: 0.446757, g: 0.9607843, b: 0.34117648, a: 1}
+  m_Color: {r: 1, g: 0.7294118, b: 0.16078432, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -5122,7 +5125,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 1
     m_LineSpacing: 1
-  m_Text: FIN DU VOL
+  m_Text: NOUVEAU RECORD !
 --- !u!222 &1335180646
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -5131,6 +5134,20 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1335180642}
   m_CullTransparentMesh: 1
+--- !u!114 &1335180647
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1335180642}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 23149d51016839848a37d48ca0aea6c1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::KiBird.MainMenu.PulseEffect
+  scaleAmplitude: 0.06
+  period: 1.2
 --- !u!1 &1345060818
 GameObject:
   m_ObjectHideFlags: 0
@@ -5470,7 +5487,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 1
     m_LineSpacing: 1
-  m_Text: 0 PTS
+  m_Text: 425 PTS
 --- !u!1 &1375056720
 GameObject:
   m_ObjectHideFlags: 0

@@ -15,11 +15,15 @@ public class GameOverUI : MonoBehaviour
     public static GameOverUI Instance { get; private set; }
 
     [Header("Réinitialisation")]
+    [Tooltip("Décoche pour garder l'écran de fin affiché indéfiniment (pratique pour tester/observer le visuel) : plus de redémarrage automatique, seul Espace/R/Entrée relance (si activé ci-dessous).")]
+    public bool autoRestart = true;
     [Min(0.1f)] public float autoResetDelay = 5f;
     public bool allowInstantRestartKeys = true;
 
     [Header("Références - objet GameOverMenu")]
     public GameObject rootPanel;
+    [Tooltip("Le HUD de jeu (GameMenu : score, temps de survie affichés en haut à gauche pendant le vol) à masquer quand ce panneau s'affiche.")]
+    public GameObject gameMenuRoot;
     public Text statusText;
     public Text titleText;
     public Text scoreLabelText;
@@ -134,6 +138,7 @@ public class GameOverUI : MonoBehaviour
         isGameOverActive = true;
         countdownTimer = Mathf.Max(0.1f, autoResetDelay);
         rootPanel.SetActive(true);
+        if (gameMenuRoot != null) gameMenuRoot.SetActive(false);
 
         int currentScore = MoveBird.CurrentScore;
         int bestScore = ScoreManager.GetBestScore();
@@ -157,14 +162,16 @@ public class GameOverUI : MonoBehaviour
     {
         if (!isGameOverActive) return;
 
-        countdownTimer -= Time.unscaledDeltaTime;
-        UpdateCountdownLabel();
-
         if (allowInstantRestartKeys && IsRestartKeyPressed())
         {
             RestartScene();
             return;
         }
+
+        if (!autoRestart) return;
+
+        countdownTimer -= Time.unscaledDeltaTime;
+        UpdateCountdownLabel();
 
         if (countdownTimer <= 0f) RestartScene();
     }
@@ -189,6 +196,8 @@ public class GameOverUI : MonoBehaviour
                 {
                     statusText.gameObject.AddComponent<PulseEffect>();
                 }
+
+                SpawnRecordConfetti();
             }
         }
         if (titleText != null)
@@ -215,8 +224,26 @@ public class GameOverUI : MonoBehaviour
         if (scoreText != null) scoreText.color = Cream;
     }
 
+    // Confettis UI (pas le ParticleSystem 3D de ConfettiEffect/HoopScore : celui-ci serait
+    // rendu par la caméra donc toujours DERRIÈRE un Canvas Screen Space - Overlay). Centrés
+    // sur le texte "NOUVEAU RECORD !" et garantis au premier plan.
+    private void SpawnRecordConfetti()
+    {
+        UIConfettiBurst.SpawnBurst(statusText.rectTransform);
+    }
+
     private void UpdateCountdownLabel()
     {
+        if (!autoRestart)
+        {
+            if (countdownText != null)
+            {
+                countdownText.text = allowInstantRestartKeys ? "ESPACE POUR CONTINUER" : "";
+            }
+            if (countdownProgress != null) countdownProgress.fillAmount = 0f;
+            return;
+        }
+
         int remaining = Mathf.Max(0, Mathf.CeilToInt(countdownTimer));
         if (countdownText != null) countdownText.text = $"NOUVEAU VOL DANS {remaining}s";
         if (countdownProgress != null)
