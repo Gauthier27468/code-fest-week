@@ -3927,10 +3927,6 @@ PrefabInstance:
       propertyPath: m_Name
       value: Bird
       objectReference: {fileID: 0}
-    - target: {fileID: 2362153942084297668, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
-      propertyPath: m_IsActive
-      value: 1
-      objectReference: {fileID: 0}
     - target: {fileID: 3135594759709096318, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: m_LocalPosition.x
       value: 4.17
@@ -3970,10 +3966,6 @@ PrefabInstance:
     - target: {fileID: 3135594759709096318, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4533687907430522642, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
-      propertyPath: m_Enabled
-      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 5639783668897378715, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: m_Enabled

@@ -209,6 +209,7 @@ MonoBehaviour:
   turnAnimationThreshold: 0.08
   climbAnimationThreshold: 0.05
   enableClamping: 1
+  enableHorizontalClamping: 0
   defaultMinX: -0.97
   defaultMaxX: 8.84
   defaultMaxHeight: 8.5
@@ -219,7 +220,7 @@ MonoBehaviour:
   scorePerMeter: 1
   scoreText: {fileID: 0}
   dieSound: {fileID: 8300000, guid: af2205bcb89245d49a0d1ec160082f20, type: 3}
-  mainMusic: {fileID: 8300000, guid: 0baf6e2e25c98bf4582559c5d07f2767, type: 3}
+  mainMusic: {fileID: 0}
   featherParticlePrefab: {fileID: 0}
 --- !u!95 &4200508157159545835
 Animator:
