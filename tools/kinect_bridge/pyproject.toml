@@ -18,6 +18,11 @@ dependencies = [
     # plus besoin de `uv venv --system-site-packages` pour aller chercher le freenect système.
     # Le .so compilé reste lié à /usr/lib/libfreenect.so.0 à l'exécution.
     "freenect>=0.1.0",
+    # Pilotage du moteur de tilt (autocenter.py). Pas via freenect : son `open_device()`
+    # reclame l'interface camera, deja detenue par le `sync_get_video()` de capture.py
+    # (LIBUSB_ERROR_BUSY), et le binding Cython n'expose pas `freenect_select_subdevices()`.
+    # Le moteur etant un peripherique USB distinct de la camera, pyusb lui parle en direct.
+    "pyusb>=1.2",
 ]
 
 [project.optional-dependencies]
