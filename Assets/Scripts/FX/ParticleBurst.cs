@@ -244,7 +244,7 @@ namespace KiBird.FX
         /// Matériau du dossier Resources, sinon du dossier Assets/Art/Generated en Éditeur,
         /// sinon un shader de particules non éclairé double-face.
         /// </summary>
-        private static Material ResolveMaterial(string resourceName)
+        public static Material ResolveMaterial(string resourceName)
         {
             if (!string.IsNullOrEmpty(resourceName))
             {
