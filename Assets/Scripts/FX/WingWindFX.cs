@@ -3,8 +3,9 @@ using UnityEngine;
 namespace KiBird.FX
 {
     /// <summary>
-    /// Souffle d'air autour de l'oiseau : tourbillons en bout d'aile (rubans + bouffées lâchées à
-    /// chaque battement) et filets d'air qui défilent le long du corps quand la vitesse monte.
+    /// Souffle d'air autour de l'oiseau : deux rubans de tourbillon lâchés par les bouts d'ailes.
+    /// Uniquement des TrailRenderer, aucun système de particules : rien ne peut apparaître sous
+    /// forme de quad carré dans le ciel.
     ///
     /// Tout est construit une fois au démarrage puis seulement modulé en intensité : aucune
     /// allocation par frame. L'intensité est déduite du mouvement réel (vitesse du Transform,
@@ -32,32 +33,13 @@ namespace KiBird.FX
 
         public Color trailColor = new Color(0.87f, 0.94f, 1f, 0.55f);
 
-        [Header("Bouffées d'air au battement")]
-        public bool enableFlapPuffs = true;
-
-        [Tooltip("Nombre de particules lâchées à chaque coup d'aile descendant.")]
-        [Range(0, 30)] public int particlesPerFlap = 7;
-
+        [Header("Battement d'ailes")]
         [Tooltip("Vitesse du bout d'aile (u/s, mouvement propre de l'aile) valant un battement à pleine puissance.")]
         public float flapSpeedReference = 3f;
 
         [Tooltip("Relève automatiquement la référence ci-dessus sur le battement le plus ample observé. " +
                  "À laisser coché : l'effet s'adapte tout seul à l'animation utilisée.")]
         public bool autoCalibrateFlap = true;
-
-        [Header("Filets d'air (sensation de vitesse)")]
-        public bool enableAirflowStreaks = true;
-
-        [Tooltip("Distance devant l'oiseau où les filets d'air apparaissent.")]
-        public float airflowSpawnDistance = 12f;
-
-        [Tooltip("Rayon de l'anneau d'apparition : creux au centre pour ne pas encombrer la vue.")]
-        public float airflowRadius = 2.9f;
-
-        [Tooltip("Nombre de filets par seconde à pleine vitesse.")]
-        public float airflowMaxRate = 40f;
-
-        public Color airflowColor = new Color(0.9f, 0.96f, 1f, 0.32f);
 
         [Header("Dosage de l'intensité")]
         [Tooltip("Vitesse d'avance (u/s) à laquelle le souffle est au maximum.")]
@@ -75,47 +57,33 @@ namespace KiBird.FX
         [Tooltip("Réactivité : bas = souffle mou et paresseux, haut = réagit au quart de tour.")]
         public float intensitySmoothing = 7f;
 
-        /// <summary>Ressources d'un bout d'aile : ruban, bouffées, et suivi du mouvement de l'os.</summary>
+        /// <summary>Ressources d'un bout d'aile : le ruban, et le suivi du mouvement de l'os.</summary>
         private sealed class WingFX
         {
             public Transform tip;
             public float side;                  // -1 = aile gauche, +1 = aile droite
             public Transform anchor;            // objet racine repositionné sur le bout d'aile
             public TrailRenderer trail;
-            public ParticleSystem puff;
-            public ParticleSystem.EmissionModule puffEmission;
             public Vector3 lastTipWorld;
             public bool hasLastTip;
-            public float flapCooldown;
         }
 
         private WingFX left;
         private WingFX right;
 
-        private ParticleSystem airflow;
-        private ParticleSystem.EmissionModule airflowEmission;
-        private Transform airflowAnchor;
-
         private Vector3 lastPosition;
         private float intensity;
         private float observedFlapPeak;
-
-        private const float FlapBurstCooldown = 0.12f;
 
         private void Start()
         {
             lastPosition = transform.position;
 
-            if (enableWingtipVortices || enableFlapPuffs)
+            if (enableWingtipVortices)
             {
                 ResolveWingTips();
                 left = BuildWing("WindFX_LeftWingtip", leftWingTip, -1f);
                 right = BuildWing("WindFX_RightWingtip", rightWingTip, 1f);
-            }
-
-            if (enableAirflowStreaks)
-            {
-                BuildAirflow();
             }
         }
 
@@ -123,7 +91,6 @@ namespace KiBird.FX
         {
             DestroyAnchor(left);
             DestroyAnchor(right);
-            if (airflowAnchor != null) Destroy(airflowAnchor.gameObject);
         }
 
         private static void DestroyAnchor(WingFX wing)
@@ -151,7 +118,6 @@ namespace KiBird.FX
 
             UpdateWing(left, velocity, dt, grounded);
             UpdateWing(right, velocity, dt, grounded);
-            UpdateAirflow(position, velocity);
         }
 
         /// <summary>Souffle dû au corps seul : avance, virage et piqué, sans le battement d'ailes.</summary>
@@ -180,7 +146,6 @@ namespace KiBird.FX
             // InverseTransformDirection et non InverseTransformPoint : le premier ignore l'échelle,
             // et l'oiseau en porte une de 10 qui diviserait la vitesse mesurée d'autant.
             float flap01 = 0f;
-            bool downstroke = false;
 
             if (wing.hasLastTip)
             {
@@ -195,7 +160,6 @@ namespace KiBird.FX
 
                 float reference = Mathf.Max(flapSpeedReference, observedFlapPeak * 0.85f);
                 flap01 = Mathf.Clamp01(tipSpeed / Mathf.Max(0.01f, reference));
-                downstroke = localVelocity.y < -reference * 0.5f;
             }
             wing.lastTipWorld = tipWorld;
             wing.hasLastTip = true;
@@ -219,30 +183,6 @@ namespace KiBird.FX
 
                 wing.trail.emitting = wingIntensity > 0.02f;
             }
-
-            if (wing.puff != null)
-            {
-                wing.puffEmission.rateOverTimeMultiplier = grounded ? 0f : 5f * wingIntensity;
-
-                wing.flapCooldown -= dt;
-                if (downstroke && wing.flapCooldown <= 0f && particlesPerFlap > 0 && !grounded)
-                {
-                    wing.puff.Emit(Mathf.RoundToInt(particlesPerFlap * Mathf.Max(0.35f, wingIntensity)));
-                    wing.flapCooldown = FlapBurstCooldown;
-                }
-            }
-        }
-
-        private void UpdateAirflow(Vector3 position, Vector3 velocity)
-        {
-            if (airflow == null) return;
-
-            // L'anneau d'apparition reste devant l'oiseau : celui-ci fonce dedans et traverse les
-            // filets d'air, qui défilent donc naturellement de part et d'autre de la caméra.
-            airflowAnchor.position = new Vector3(position.x, position.y + 0.25f, position.z + airflowSpawnDistance);
-
-            float forward01 = Mathf.Clamp01(velocity.z / Mathf.Max(0.01f, referenceForwardSpeed));
-            airflowEmission.rateOverTimeMultiplier = airflowMaxRate * intensity * forward01;
         }
 
         // ---------------------------------------------------------------- construction
@@ -293,9 +233,9 @@ namespace KiBird.FX
         {
             if (tip == null) return null;
 
-            // Les effets vivent à la racine de la scène plutôt que sous l'oiseau : celui-ci porte
-            // une échelle de 10, qui multiplierait sans prévenir largeurs de ruban et tailles de
-            // particules. Ancrés en monde, les réglages de l'inspecteur sont des unités réelles.
+            // Les rubans vivent à la racine de la scène plutôt que sous l'oiseau : celui-ci porte
+            // une échelle de 10, qui multiplierait sans prévenir la largeur du ruban. Ancrés en
+            // monde, les réglages de l'inspecteur sont des unités réelles.
             var anchor = new GameObject(name).transform;
             anchor.position = tip.position;
 
@@ -306,16 +246,7 @@ namespace KiBird.FX
                 anchor = anchor
             };
 
-            if (enableWingtipVortices)
-            {
-                wing.trail = BuildTrail(anchor.gameObject);
-            }
-            if (enableFlapPuffs)
-            {
-                wing.puff = BuildPuff(anchor);
-                wing.puffEmission = wing.puff.emission;
-            }
-
+            wing.trail = BuildTrail(anchor.gameObject);
             return wing;
         }
 
@@ -351,127 +282,6 @@ namespace KiBird.FX
             curve.AddKey(0.35f, 0.7f);
             curve.AddKey(1f, 0f);
             return curve;
-        }
-
-        private ParticleSystem BuildPuff(Transform parent)
-        {
-            var host = new GameObject("Puffs");
-            host.transform.SetParent(parent, false);
-
-            var ps = host.AddComponent<ParticleSystem>();
-
-            var main = ps.main;
-            main.loop = true;
-            main.playOnAwake = false;
-            main.startLifetime = new ParticleSystem.MinMaxCurve(0.35f, 0.75f);
-            main.startSpeed = new ParticleSystem.MinMaxCurve(0.3f, 1.1f);
-            main.startSize = new ParticleSystem.MinMaxCurve(0.09f, 0.24f);
-            main.startColor = new ParticleSystem.MinMaxGradient(trailColor);
-            main.startRotation = new ParticleSystem.MinMaxCurve(0f, 360f * Mathf.Deg2Rad);
-            main.gravityModifier = -0.02f;
-            main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.maxParticles = 120;
-
-            var emission = ps.emission;
-            emission.rateOverTime = 0f;
-
-            var shape = ps.shape;
-            shape.shapeType = ParticleSystemShapeType.Sphere;
-            shape.radius = 0.06f;
-
-            var color = ps.colorOverLifetime;
-            color.enabled = true;
-            color.color = new ParticleSystem.MinMaxGradient(BuildFadeGradient());
-
-            var size = ps.sizeOverLifetime;
-            size.enabled = true;
-            var growth = new AnimationCurve();
-            growth.AddKey(0f, 0.4f);
-            growth.AddKey(0.3f, 1f);
-            growth.AddKey(1f, 1.35f);
-            size.size = new ParticleSystem.MinMaxCurve(1f, growth);
-
-            var renderer = host.GetComponent<ParticleSystemRenderer>();
-            renderer.sharedMaterial = ParticleBurst.ResolveMaterial("M_WindWisp");
-            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
-            renderer.sortingFudge = -10f;
-
-            ps.Play();
-            return ps;
-        }
-
-        private void BuildAirflow()
-        {
-            var host = new GameObject("WindFX_Airflow");
-            airflowAnchor = host.transform;
-            airflowAnchor.position = transform.position + Vector3.forward * airflowSpawnDistance;
-
-            airflow = host.AddComponent<ParticleSystem>();
-
-            var main = airflow.main;
-            main.loop = true;
-            main.playOnAwake = false;
-            main.startLifetime = new ParticleSystem.MinMaxCurve(1.1f, 1.8f);
-            // La vitesse est donnée par le module Velocity ci-dessous et non ici : la forme
-            // d'émission est un cercle, dont la direction native pousse les particules vers
-            // l'extérieur du disque au lieu de les envoyer vers la caméra.
-            main.startSpeed = 0f;
-            main.startSize = new ParticleSystem.MinMaxCurve(0.07f, 0.16f);
-            main.startColor = new ParticleSystem.MinMaxGradient(airflowColor);
-            main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.maxParticles = 160;
-
-            var emission = airflow.emission;
-            emission.rateOverTime = 0f;
-            airflowEmission = emission;
-
-            // Cercle creux : les filets naissent autour du couloir de vol, jamais en plein écran.
-            var shape = airflow.shape;
-            shape.shapeType = ParticleSystemShapeType.Circle;
-            shape.radius = airflowRadius;
-            shape.radiusThickness = 0.45f;
-            shape.arc = 360f;
-            shape.arcMode = ParticleSystemShapeMultiModeValue.Random;
-
-            // Les filets remontent vers la caméra pendant que l'oiseau fonce dedans : la vitesse
-            // relative perçue est la somme des deux, sans avoir à faire suivre les particules.
-            var velocity = airflow.velocityOverLifetime;
-            velocity.enabled = true;
-            velocity.space = ParticleSystemSimulationSpace.World;
-            velocity.z = new ParticleSystem.MinMaxCurve(-5.5f, -3.5f);
-            velocity.x = new ParticleSystem.MinMaxCurve(-0.4f, 0.4f);
-            velocity.y = new ParticleSystem.MinMaxCurve(-0.3f, 0.3f);
-
-            var color = airflow.colorOverLifetime;
-            color.enabled = true;
-            color.color = new ParticleSystem.MinMaxGradient(BuildFadeGradient());
-
-            var renderer = host.GetComponent<ParticleSystemRenderer>();
-            renderer.renderMode = ParticleSystemRenderMode.Stretch;
-            renderer.velocityScale = 0.35f;
-            renderer.lengthScale = 2.5f;
-            renderer.sharedMaterial = ParticleBurst.ResolveMaterial("M_WindTrail");
-            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
-
-            airflow.Play();
-        }
-
-        /// <summary>Apparition brève puis disparition lente : un souffle ne claque pas, il s'étire.</summary>
-        private static Gradient BuildFadeGradient()
-        {
-            var gradient = new Gradient();
-            gradient.SetKeys(
-                new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
-                new[]
-                {
-                    new GradientAlphaKey(0f, 0f),
-                    new GradientAlphaKey(1f, 0.18f),
-                    new GradientAlphaKey(0.55f, 0.6f),
-                    new GradientAlphaKey(0f, 1f)
-                });
-            return gradient;
         }
     }
 }

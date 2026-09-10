@@ -699,15 +699,8 @@ MonoBehaviour:
   trailTime: 0.35
   trailWidth: 0.13
   trailColor: {r: 0.87, g: 0.94, b: 1, a: 0.55}
-  enableFlapPuffs: 1
-  particlesPerFlap: 7
   flapSpeedReference: 3
   autoCalibrateFlap: 1
-  enableAirflowStreaks: 1
-  airflowSpawnDistance: 12
-  airflowRadius: 2.9
-  airflowMaxRate: 40
-  airflowColor: {r: 0.9, g: 0.96, b: 1, a: 0.32}
   referenceForwardSpeed: 12
   referenceTurnSpeed: 6
   referenceDiveSpeed: 5
