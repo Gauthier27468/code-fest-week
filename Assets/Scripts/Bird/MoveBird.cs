@@ -113,7 +113,7 @@ public class MoveBird : MonoBehaviour
 
     private static int bonusScore = 0;
     private float startZPos = 0f;
-    
+
     [Header("UI Menu & Sound Effect")]
     [SerializeField] private Text scoreText;
     private AudioSource birdSource;
@@ -311,11 +311,11 @@ public class MoveBird : MonoBehaviour
 
         HandleSpeedInput();
         UpdateBoundaries();
-        Vector3 input = GetInput();
-        input = EnforceBoundaryConstraints(input);
+        Vector3 rawInput = GetInput();
+        Vector3 input = EnforceBoundaryConstraints(rawInput);
         Move(input);
         Bank(input);
-        UpdateAnimation(input);
+        UpdateAnimation(rawInput);
 
         RefreshScoreLabel();
     }
@@ -809,7 +809,6 @@ public class MoveBird : MonoBehaviour
         if (transform.position.y >= currentMaxHeight - 0.05f)
         {
             ceilingLockoutTimer = ceilingRecoveryDuration;
-            keyboardFlapTimer = 0f;
         }
 
         if (ceilingLockoutTimer > 0f)
@@ -820,7 +819,6 @@ public class MoveBird : MonoBehaviour
             {
                 input.y = glideSink;
             }
-            keyboardFlapTimer = 0f;
         }
 
         // Plancher d'altitude : empêche de piquer sous le sol ou l'eau
@@ -1010,11 +1008,11 @@ public class MoveBird : MonoBehaviour
         // - En piqué / plongeon -> Dive = true, Flying = false (joue l'animation dive)
         // - En mode planage ou neutre -> Flying = false, Dive = false (joue l'animation idle/planage)
         // - Si l'oiseau tourne OU remonte vers le haut -> Flying = true (joue l'animation Flying/battement)
-        // - Si le plafond d'altitude est atteint (planage forcé) -> Flying = false garanti
+        // - Même si le plafond d'altitude est atteint, l'animation reflète les commandes du joueur (pas de planage forcé au niveau de l'animation)
         bool isDiving = input.y < diveAnimationThreshold;
         bool isTurning = Mathf.Abs(input.x) > turnAnimationThreshold;
         bool isClimbing = input.y > climbAnimationThreshold;
-        bool isFlying = !isDiving && (isTurning || isClimbing) && ceilingLockoutTimer <= 0f;
+        bool isFlying = !isDiving && (isTurning || isClimbing);
 
         animator.SetBool(FlyingHash, isFlying);
         if (hasDiveParameter)
