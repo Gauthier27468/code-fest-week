@@ -133,6 +133,22 @@ public class GameOverUI : MonoBehaviour
         DisplayResult(false, forceNewRecord: true);
     }
 
+    [ContextMenu("Debug : Afficher Victoire")]
+    private void DebugShowVictory()
+    {
+        if (rootPanel == null) return;
+        isGameOverActive = false;
+        DisplayResult(true, forceNewRecord: false);
+    }
+
+    [ContextMenu("Debug : Afficher Victoire + Nouveau Record")]
+    private void DebugShowVictoryNewRecord()
+    {
+        if (rootPanel == null) return;
+        isGameOverActive = false;
+        DisplayResult(true, forceNewRecord: true);
+    }
+
     private void DisplayResult(bool victory, bool forceNewRecord)
     {
         isGameOverActive = true;
