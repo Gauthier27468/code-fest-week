@@ -62,8 +62,11 @@ public class MoveBird : MonoBehaviour
     public float diveAnimationThreshold = -0.25f;
 
     [Header("Boundary Clamping (Montagnes & Altitude)")]
-    [Tooltip("Active le confinement de l'oiseau dans les limites latérales des montagnes et d'altitude.")]
+    [Tooltip("Active le confinement global de l'oiseau (limites latérales et altitude).")]
     public bool enableClamping = true;
+
+    [Tooltip("Active le confinement horizontal (axe X). Décocher si les limites latérales sont gérées par les colliders solides des falaises/rochers.")]
+    public bool enableHorizontalClamping = true;
 
     [Tooltip("Limite X gauche (montagne gauche).")]
     public float defaultMinX = -0.97f;
@@ -830,14 +833,17 @@ public class MoveBird : MonoBehaviour
             }
         }
 
-        // Confinement horizontal : empêche de braquer davantage dans la paroi rocheuse
-        if (transform.position.x <= currentMinX + 0.05f && input.x < 0f)
+        // Confinement horizontal : empêche de braquer davantage dans la paroi rocheuse (si activé)
+        if (enableHorizontalClamping)
         {
-            input.x = 0f;
-        }
-        else if (transform.position.x >= currentMaxX - 0.05f && input.x > 0f)
-        {
-            input.x = 0f;
+            if (transform.position.x <= currentMinX + 0.05f && input.x < 0f)
+            {
+                input.x = 0f;
+            }
+            else if (transform.position.x >= currentMaxX - 0.05f && input.x > 0f)
+            {
+                input.x = 0f;
+            }
         }
 
         return input;
@@ -974,7 +980,10 @@ public class MoveBird : MonoBehaviour
         if (enableClamping)
         {
             Vector3 pos = transform.position;
-            pos.x = Mathf.Clamp(pos.x, currentMinX, currentMaxX);
+            if (enableHorizontalClamping)
+            {
+                pos.x = Mathf.Clamp(pos.x, currentMinX, currentMaxX);
+            }
             pos.y = Mathf.Clamp(pos.y, currentMinHeight, currentMaxHeight);
             transform.position = pos;
         }

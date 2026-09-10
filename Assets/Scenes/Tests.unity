@@ -171,6 +171,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: DinosaurusBlock
       objectReference: {fileID: 0}
+    - target: {fileID: 7302319747520972510, guid: 407b969ee77ef344895be69d60ac3273, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -885,7 +889,6 @@ MonoBehaviour:
   playerSilhouette: {fileID: 946749845}
   lastScoreText: {fileID: 1665159458}
   bestScoreText: {fileID: 109561273}
-  scoreTitleText: {fileID: 1220972210}
   leaderboardText: {fileID: 0}
   promptText: {fileID: 1767399077}
   startProgressFill: {fileID: 1801100281}
@@ -948,7 +951,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GameOverUI
   autoResetDelay: 5
   allowInstantRestartKeys: 0
-  customFont: {fileID: 0}
   rootPanel: {fileID: 320345498}
   titleText: {fileID: 0}
   scoreText: {fileID: 1599640889}
@@ -1555,7 +1557,6 @@ MonoBehaviour:
   bodyRoot: {fileID: 770636897}
   leftArm: {fileID: 949569584}
   rightArm: {fileID: 1623106932}
-  lerpSpeed: 8
 --- !u!1 &949569583
 GameObject:
   m_ObjectHideFlags: 0
@@ -3927,10 +3928,6 @@ PrefabInstance:
       propertyPath: m_Name
       value: Bird
       objectReference: {fileID: 0}
-    - target: {fileID: 2362153942084297668, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
-      propertyPath: m_IsActive
-      value: 1
-      objectReference: {fileID: 0}
     - target: {fileID: 3135594759709096318, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: m_LocalPosition.x
       value: 4.17
@@ -3970,10 +3967,6 @@ PrefabInstance:
     - target: {fileID: 3135594759709096318, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4533687907430522642, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
-      propertyPath: m_Enabled
-      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 5639783668897378715, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: m_Enabled
