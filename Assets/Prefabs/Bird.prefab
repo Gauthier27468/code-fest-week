@@ -221,9 +221,12 @@ MonoBehaviour:
   scorePerMeter: 1
   scoreText: {fileID: 0}
   birdSource: {fileID: 0}
+  musicAudioSource: {fileID: 0}
   flapAudioSource: {fileID: 0}
-  dieSound: {fileID: 8300000, guid: af2205bcb89245d49a0d1ec160082f20, type: 3}
   mainMusic: {fileID: 0}
+  musicVolume: 0.35
+  dieSound: {fileID: 8300000, guid: af2205bcb89245d49a0d1ec160082f20, type: 3}
+  dieSoundVolume: 1
   flapSound: {fileID: 8300000, guid: 0def92ee48e552644871685a7dba05b5, type: 3}
   flapVolume: 0.8
   randomizeFlapPitch: 1
