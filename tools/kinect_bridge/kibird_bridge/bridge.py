@@ -1,4 +1,5 @@
 """Orchestration principale : Kinect -> pose -> tracking -> gestes -> UDP."""
+
 from __future__ import annotations
 
 import argparse
@@ -7,8 +8,9 @@ import sys
 import time
 from pathlib import Path
 
-from .autocenter import focus as autocenter_focus, reset as autocenter_reset
 from . import protocol
+from .autocenter import focus as autocenter_focus
+from .autocenter import reset as autocenter_reset
 from .gestures import GestureConfig, GestureOutput, GestureState, update_gestures
 from .tracking import PlayerTracker, TrackingConfig
 
@@ -18,7 +20,9 @@ def _default_model_path() -> Path:
     bundle_dir = getattr(sys, "_MEIPASS", None)
     if bundle_dir is not None:
         return Path(bundle_dir) / "models" / "pose_landmarker_lite.task"
-    return Path(__file__).resolve().parent.parent / "models" / "pose_landmarker_lite.task"
+    return (
+        Path(__file__).resolve().parent.parent / "models" / "pose_landmarker_lite.task"
+    )
 
 
 DEFAULT_MODEL_PATH = _default_model_path()
@@ -34,7 +38,9 @@ KINECT_INIT_MAX_ATTEMPTS = 4
 KINECT_INIT_RETRY_DELAY_S = 1.5
 
 
-def _hip_mid_pixel(skeleton: dict, width: int, height: int) -> tuple[int, int, float, float]:
+def _hip_mid_pixel(
+    skeleton: dict, width: int, height: int
+) -> tuple[int, int, float, float]:
     lx, ly = skeleton["L_HIP"].x, skeleton["L_HIP"].y
     rx, ry = skeleton["R_HIP"].x, skeleton["R_HIP"].y
     mx, my = (lx + rx) / 2.0, (ly + ry) / 2.0
@@ -42,7 +48,11 @@ def _hip_mid_pixel(skeleton: dict, width: int, height: int) -> tuple[int, int, f
 
 
 def _select_front_skeleton(
-    skeletons: list[dict], capture, depth_mm, width: int, height: int,
+    skeletons: list[dict],
+    capture,
+    depth_mm,
+    width: int,
+    height: int,
 ) -> tuple[dict | None, float, float | None, float | None]:
     """Retient le squelette le plus proche de la Kinect.
 
@@ -85,7 +95,9 @@ def _build_packet(
     for name in protocol.JOINT_NAMES:
         if skeleton is not None and name in skeleton:
             lm = skeleton[name]
-            joints.append(protocol.Joint(x=lm.x, y=lm.y, z=lm.z, confidence=lm.visibility))
+            joints.append(
+                protocol.Joint(x=lm.x, y=lm.y, z=lm.z, confidence=lm.visibility)
+            )
         else:
             joints.append(protocol.Joint())
 
@@ -162,16 +174,24 @@ def run_live(args: argparse.Namespace) -> None:
     bg_filter_enabled = args.bg_filter
     print("Kinect initialisee.")
     if bg_filter_enabled:
-        print(f"Filtre de fond IR actif : tout ce qui est au-dela de {args.bg_max_distance:.1f}m est masque.")
+        print(
+            f"Filtre de fond IR actif : tout ce qui est au-dela de {args.bg_max_distance:.1f}m est masque."
+        )
         if args.num_poses > 1:
-            print(f"  (--num-poses {args.num_poses} : MediaPipe cherche plusieurs poses, ~25 ms/frame "
-                  f"de plus. 1 suffit tant que le filtre isole bien le joueur.)")
+            print(
+                f"  (--num-poses {args.num_poses} : MediaPipe cherche plusieurs poses, ~25 ms/frame "
+                f"de plus. 1 suffit tant que le filtre isole bien le joueur.)"
+            )
     else:
         print("Filtre de fond IR desactive.")
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    tracker = PlayerTracker(TrackingConfig(min_distance_m=args.min_distance, max_distance_m=args.max_distance))
+    tracker = PlayerTracker(
+        TrackingConfig(
+            min_distance_m=args.min_distance, max_distance_m=args.max_distance
+        )
+    )
     gesture_state = GestureState()
     gesture_config = GestureConfig()
 
@@ -204,8 +224,12 @@ def run_live(args: argparse.Namespace) -> None:
     print("Flux video OK.")
 
     if preview is not None:
-        print("[PREVIEW] Fenetre de debug active (q/Echap pour quitter, f pour basculer brut/filtre).")
-    print(f"Emission UDP vers {args.host}:{args.port} @ ~{TARGET_HZ:.0f}Hz. Ctrl+C pour arreter.")
+        print(
+            "[PREVIEW] Fenetre de debug active (q/Echap pour quitter, f pour basculer brut/filtre)."
+        )
+    print(
+        f"Emission UDP vers {args.host}:{args.port} @ ~{TARGET_HZ:.0f}Hz. Ctrl+C pour arreter."
+    )
     frames_since_status = 0
     hz_ema = 0.0
     last_status_t = time.time()
@@ -221,20 +245,29 @@ def run_live(args: argparse.Namespace) -> None:
             # Fond supprime AVANT MediaPipe : les personnes au-dela de la zone de jeu ne
             # generent plus de squelette du tout, au lieu d'etre filtrees apres coup.
             rgb_for_pose = (
-                remove_background(frame.rgb, frame.depth_mm, max_depth_m=args.bg_max_distance)
+                remove_background(
+                    frame.rgb, frame.depth_mm, max_depth_m=args.bg_max_distance
+                )
                 if bg_filter_enabled
                 else frame.rgb
             )
             skeletons = pose_estimator.detect(rgb_for_pose)
             candidate, distance, hip_x, hip_y = _select_front_skeleton(
-                skeletons, capture, frame.depth_mm, frame.rgb.shape[1], frame.rgb.shape[0],
+                skeletons,
+                capture,
+                frame.depth_mm,
+                frame.rgb.shape[1],
+                frame.rgb.shape[0],
             )
 
             tracking_result = tracker.update(distance, hip_x, hip_y, now=now)
 
             if tracking_result.player_present and candidate is not None:
                 gesture_out = update_gestures(
-                    gesture_state, gesture_config, now=now, dt=dt,
+                    gesture_state,
+                    gesture_config,
+                    now=now,
+                    dt=dt,
                     l_shoulder=(candidate["L_SHOULDER"].x, candidate["L_SHOULDER"].y),
                     r_shoulder=(candidate["R_SHOULDER"].x, candidate["R_SHOULDER"].y),
                     l_wrist=(candidate["L_WRIST"].x, candidate["L_WRIST"].y),
@@ -248,7 +281,9 @@ def run_live(args: argparse.Namespace) -> None:
                             glide_hold_start = now
                         elif now - glide_hold_start >= CALIBRATION_HOLD_S:
                             gesture_state.neutral_distance_m = distance
-                            print(f"\n[CALIBRATION] Distance neutre fixee a {distance:.2f}m")
+                            print(
+                                f"\n[CALIBRATION] Distance neutre fixee a {distance:.2f}m"
+                            )
                     else:
                         glide_hold_start = None
                 if args.mirror:
@@ -264,7 +299,9 @@ def run_live(args: argparse.Namespace) -> None:
                 elif not tracking_result.player_present:
                     autocenter_reset()
 
-            packet = _build_packet(seq, frame.timestamp, tracking_result, distance, gesture_out, candidate)
+            packet = _build_packet(
+                seq, frame.timestamp, tracking_result, distance, gesture_out, candidate
+            )
             sock.sendto(protocol.pack(packet), (args.host, args.port))
             seq += 1
 
@@ -275,7 +312,10 @@ def run_live(args: argparse.Namespace) -> None:
             if preview is not None:
                 try:
                     preview.show(
-                        frame.rgb, rgb_for_pose, skeletons, candidate,
+                        frame.rgb,
+                        rgb_for_pose,
+                        skeletons,
+                        candidate,
                         distance=distance,
                         in_zone=tracking_result.in_zone,
                         player_present=tracking_result.player_present,
@@ -293,7 +333,11 @@ def run_live(args: argparse.Namespace) -> None:
             if now - last_status_t >= 2.0:
                 hz = frames_since_status / (now - last_status_t)
                 if tracking_result.player_present:
-                    calib = "calibre" if gesture_state.neutral_distance_m is not None else "NON calibre (bras tendus 3s)"
+                    calib = (
+                        "calibre"
+                        if gesture_state.neutral_distance_m is not None
+                        else "NON calibre (bras tendus 3s)"
+                    )
                     etat = f"JOUEUR  dist={distance:.2f}m  {calib}"
                 else:
                     etat = "aucun joueur dans la zone"
@@ -318,28 +362,57 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7777)
-    parser.add_argument("--model", default=str(DEFAULT_MODEL_PATH), help="Chemin du modele .task PoseLandmarker")
-    parser.add_argument("--num-poses", type=int, default=1,
-                        help="Nombre max de personnes detectees par MediaPipe. 1 par defaut : le "
-                             "filtre de fond ne laisse deja qu'une personne dans l'image, et "
-                             "au-dela de 1 MediaPipe perd sa fast-path de suivi (31 ms -> 56 ms "
-                             "par frame). Passer a 2 si deux visiteurs sont confondus.")
-    parser.add_argument("--mirror", action=argparse.BooleanOptionalAction, default=False,
-                        help="Inverse gauche/droite. Le mapping par defaut est deja naturel : "
-                             "n'active ce flag que si le ressenti est inverse a l'installation.")
-    parser.add_argument("--bg-filter", action=argparse.BooleanOptionalAction, default=True,
-                        help="Masque le fond au-dela de --bg-max-distance avec la profondeur IR "
-                             "avant d'envoyer l'image a MediaPipe")
-    parser.add_argument("--bg-max-distance", type=float, default=2.0,
-                        help="Distance (m) au-dela de laquelle les pixels sont noircis")
-    parser.add_argument("--preview", action="store_true",
-                        help="Ouvre une fenetre camera avec overlay du squelette MediaPipe et des "
-                             "commandes deduites (debug/reglage ; necessite opencv-python non-headless)")
-    parser.add_argument("--preview-scale", type=float, default=1.0,
-                        help="Facteur d'echelle de la fenetre --preview (ex. 0.5 pour une demi-taille)")
+    parser.add_argument(
+        "--model",
+        default=str(DEFAULT_MODEL_PATH),
+        help="Chemin du modele .task PoseLandmarker",
+    )
+    parser.add_argument(
+        "--num-poses",
+        type=int,
+        default=1,
+        help="Nombre max de personnes detectees par MediaPipe. 1 par defaut : le "
+        "filtre de fond ne laisse deja qu'une personne dans l'image, et "
+        "au-dela de 1 MediaPipe perd sa fast-path de suivi (31 ms -> 56 ms "
+        "par frame). Passer a 2 si deux visiteurs sont confondus.",
+    )
+    parser.add_argument(
+        "--mirror",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Inverse gauche/droite. Le mapping par defaut est deja naturel : "
+        "n'active ce flag que si le ressenti est inverse a l'installation.",
+    )
+    parser.add_argument(
+        "--bg-filter",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Masque le fond au-dela de --bg-max-distance avec la profondeur IR "
+        "avant d'envoyer l'image a MediaPipe",
+    )
+    parser.add_argument(
+        "--bg-max-distance",
+        type=float,
+        default=2.5,
+        help="Distance (m) au-dela de laquelle les pixels sont noircis",
+    )
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="Ouvre une fenetre camera avec overlay du squelette MediaPipe et des "
+        "commandes deduites (debug/reglage ; necessite opencv-python non-headless)",
+    )
+    parser.add_argument(
+        "--preview-scale",
+        type=float,
+        default=1.0,
+        help="Facteur d'echelle de la fenetre --preview (ex. 0.5 pour une demi-taille)",
+    )
     parser.add_argument("--min-distance", type=float, default=1.0)
-    parser.add_argument("--max-distance", type=float, default=2.0)
-    parser.add_argument("--auto-center", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--max-distance", type=float, default=2.5)
+    parser.add_argument(
+        "--auto-center", action=argparse.BooleanOptionalAction, default=True
+    )
     args = parser.parse_args()
 
     from .capture import KinectUnavailableError
