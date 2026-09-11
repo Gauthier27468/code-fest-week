@@ -116,9 +116,30 @@ public class MoveBird : MonoBehaviour
 
     [Header("UI Menu & Sound Effect")]
     [SerializeField] private Text scoreText;
-    private AudioSource birdSource;
-    [SerializeField] private AudioClip dieSound;
+    [SerializeField] private AudioSource birdSource;
+    [Tooltip("AudioSource dédié à la musique de fond (auto-généré si vide afin de contrôler son volume séparément).")]
+    [SerializeField] private AudioSource musicAudioSource;
+    [Tooltip("AudioSource dédié aux battements d'ailes (auto-généré au démarrage si non assigné afin de ne pas couper la musique).")]
+    [SerializeField] private AudioSource flapAudioSource;
+
+    [Header("Musique de fond")]
     [SerializeField] private AudioClip mainMusic;
+    [Range(0f, 1f)]
+    [Tooltip("Volume indépendant de la musique de fond.")]
+    [SerializeField] private float musicVolume = 0.35f;
+
+    [Header("Bruitages")]
+    [SerializeField] private AudioClip dieSound;
+    [Range(0f, 1f)]
+    [Tooltip("Volume indépendant du son de mort.")]
+    [SerializeField] private float dieSoundVolume = 1.0f;
+    [Tooltip("Clip audio du battement d'ailes (flapping) à synchroniser via Animation Event.")]
+    [SerializeField] private AudioClip flapSound;
+    [Range(0f, 1f)]
+    [Tooltip("Volume indépendant du battement d'ailes.")]
+    [SerializeField] private float flapVolume = 0.8f;
+    [Tooltip("Variation aléatoire légère de la hauteur du son (pitch) pour un rendu naturel à chaque battement.")]
+    [SerializeField] private bool randomizeFlapPitch = true;
 
     public static void AddBonusScore(int points)
     {
@@ -153,6 +174,45 @@ public class MoveBird : MonoBehaviour
     private float currentPitch = 0f;
     private float keyboardFlapTimer = 0f;
     private float ceilingLockoutTimer = 0f;
+
+    public AudioClip FlapSound
+    {
+        get => flapSound;
+        set => flapSound = value;
+    }
+
+    public float FlapVolume
+    {
+        get => flapVolume;
+        set => flapVolume = Mathf.Clamp01(value);
+    }
+
+    public float MusicVolume
+    {
+        get => musicVolume;
+        set
+        {
+            musicVolume = Mathf.Clamp01(value);
+            ApplyMusicVolume();
+        }
+    }
+
+    public float DieSoundVolume
+    {
+        get => dieSoundVolume;
+        set => dieSoundVolume = Mathf.Clamp01(value);
+    }
+
+    public void SetMusicVolume(float volume) => MusicVolume = volume;
+
+    public void ApplyMusicVolume()
+    {
+        AudioSource src = musicAudioSource != null ? musicAudioSource : birdSource;
+        if (src != null)
+        {
+            src.volume = musicVolume;
+        }
+    }
 
     private float currentMinX;
     private float currentMaxX;
@@ -201,7 +261,37 @@ public class MoveBird : MonoBehaviour
         isGroundImpact = false;
         bonusScore = 0;
         startZPos = transform.position.z;
-        birdSource = GetComponent<AudioSource>();
+        if (birdSource == null)
+        {
+            birdSource = GetComponent<AudioSource>();
+            if (birdSource == null)
+            {
+                birdSource = gameObject.AddComponent<AudioSource>();
+            }
+        }
+
+        if (musicAudioSource == null)
+        {
+            musicAudioSource = gameObject.AddComponent<AudioSource>();
+            musicAudioSource.playOnAwake = false;
+            musicAudioSource.loop = true;
+            musicAudioSource.spatialBlend = 0f;
+        }
+        ApplyMusicVolume();
+
+        if (flapAudioSource == null)
+        {
+            flapAudioSource = gameObject.AddComponent<AudioSource>();
+            flapAudioSource.playOnAwake = false;
+            flapAudioSource.spatialBlend = birdSource != null ? birdSource.spatialBlend : 0f;
+        }
+
+#if UNITY_EDITOR
+        if (flapSound == null)
+        {
+            flapSound = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/AssetStore/Bird/flap.mp3");
+        }
+#endif
 
         // Configuration du Rigidbody dynamique pour détecter les collisions avec le décor (MeshColliders statiques)
         rb = GetComponent<Rigidbody>();
@@ -284,6 +374,11 @@ public class MoveBird : MonoBehaviour
     private void Update()
     {
         if (IsDead || IsWon) return;
+
+        if (musicAudioSource != null && !Mathf.Approximately(musicAudioSource.volume, musicVolume))
+        {
+            ApplyMusicVolume();
+        }
 
         SurvivalTime += Time.deltaTime;
         float dist = Mathf.Max(0f, transform.position.z - startZPos);
@@ -382,9 +477,19 @@ public class MoveBird : MonoBehaviour
 
         IsWon = true;
 
+        if (musicAudioSource != null)
+        {
+            musicAudioSource.Stop();
+        }
+
         if (birdSource != null)
         {
-            birdSource.Stop(); // Arrêter la musique de vol
+            birdSource.Stop(); // Arrêter la musique de vol si sur birdSource
+        }
+
+        if (flapAudioSource != null)
+        {
+            flapAudioSource.Stop();
         }
 
         forwardSpeed = 0f;
@@ -446,10 +551,23 @@ public class MoveBird : MonoBehaviour
 
         IsDead = true;
 
-        if (birdSource != null && dieSound != null)
+        if (musicAudioSource != null)
         {
-            birdSource.Stop(); // stopping main music if playing
-            birdSource.PlayOneShot(dieSound);
+            musicAudioSource.Stop();
+        }
+
+        if (birdSource != null)
+        {
+            birdSource.Stop();
+            if (dieSound != null)
+            {
+                birdSource.PlayOneShot(dieSound, dieSoundVolume);
+            }
+        }
+
+        if (flapAudioSource != null)
+        {
+            flapAudioSource.Stop();
         }
 
         deathTime = Time.time;
@@ -862,6 +980,15 @@ public class MoveBird : MonoBehaviour
             currentMaxHeight = defaultMaxHeight;
             currentMinHeight = defaultMinHeight;
         }
+
+        ApplyMusicVolume();
+
+#if UNITY_EDITOR
+        if (flapSound == null)
+        {
+            flapSound = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/AssetStore/Bird/flap.mp3");
+        }
+#endif
     }
 
     private Vector3 GetInput()
@@ -1036,6 +1163,34 @@ public class MoveBird : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Joue un battement d'ailes sonore. À lier directement sur un Animation Event
+    /// de l'animation de vol pour être parfaitement synchronisé avec les ailes.
+    /// </summary>
+    public void PlayFlapSound()
+    {
+        if (IsDead || IsWon || flapSound == null) return;
+
+        AudioSource source = flapAudioSource != null ? flapAudioSource : birdSource;
+        if (source == null) return;
+
+        if (randomizeFlapPitch)
+        {
+            source.pitch = Random.Range(0.93f, 1.07f);
+        }
+        else
+        {
+            source.pitch = 1.0f;
+        }
+
+        source.PlayOneShot(flapSound, flapVolume);
+    }
+
+    /// <summary>
+    /// Alias court pour Animation Event.
+    /// </summary>
+    public void PlayFlap() => PlayFlapSound();
+
     private static bool HasParameter(Animator anim, int paramHash)
     {
         if (anim == null) return false;
@@ -1091,11 +1246,23 @@ public class MoveBird : MonoBehaviour
 
     public void PlayMainMusic()
     {
-        if (birdSource != null && mainMusic != null)
+        AudioSource src = musicAudioSource != null ? musicAudioSource : birdSource;
+        if (src != null && mainMusic != null)
         {
-            birdSource.clip = mainMusic;
-            birdSource.loop = true;
-            birdSource.Play();
+            src.clip = mainMusic;
+            src.loop = true;
+            src.volume = musicVolume;
+            src.spatialBlend = 0f;
+            src.Play();
+        }
+    }
+
+    public void StopMainMusic()
+    {
+        AudioSource src = musicAudioSource != null ? musicAudioSource : birdSource;
+        if (src != null)
+        {
+            src.Stop();
         }
     }
 }
