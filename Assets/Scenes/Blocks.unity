@@ -9470,6 +9470,9 @@ PrefabInstance:
     - target: {fileID: 7461930528114553271, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: airflowMaxRate
       value: 20
+    - target: {fileID: 5639783668897378715, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+      propertyPath: flapSoundInterval
+      value: 0.5
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
