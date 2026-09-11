@@ -108,3 +108,14 @@ InitTestScene*.unity*
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
 
+# Bridge Kinect Python (tools/kinect_bridge)
+tools/kinect_bridge/.venv*/
+tools/kinect_bridge/__pycache__/
+tools/kinect_bridge/**/__pycache__/
+tools/kinect_bridge/models/*.task
+tools/kinect_bridge/*.kbr
+# Artefacts PyInstaller (build_bridge.sh) : régénérés à chaque build Unity, ~365 Mo.
+tools/kinect_bridge/dist/
+tools/kinect_bridge/build/
+
+implementation_plan.md

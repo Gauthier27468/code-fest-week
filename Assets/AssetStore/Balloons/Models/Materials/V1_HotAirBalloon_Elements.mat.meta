@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 680233eb20d1724419df57b356948643
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 257931
+  packageName: 'UNDERPOLY: Free Hot-Air Balloons'
+  packageVersion: 1.2
+  assetPath: Assets/UNDERPOLY - Free Hot-Air Balloons/Models/Materials/V1_HotAirBalloon_Elements.mat
+  uploadId: 621836

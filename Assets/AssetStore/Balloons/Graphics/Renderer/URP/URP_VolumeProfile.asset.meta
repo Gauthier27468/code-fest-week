@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 26952cd37d6dc244bbffa911a6673dfa
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 257931
+  packageName: 'UNDERPOLY: Free Hot-Air Balloons'
+  packageVersion: 1.2
+  assetPath: Assets/UNDERPOLY - Free Hot-Air Balloons/Graphics/Renderer/URP/URP_VolumeProfile.asset
+  uploadId: 621836
