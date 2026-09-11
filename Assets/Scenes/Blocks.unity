@@ -2079,23 +2079,23 @@ MonoBehaviour:
   autoResetDelay: 5
   allowInstantRestartKeys: 0
   rootPanel: {fileID: 320345498}
-  gameMenuRoot: {fileID: 0}
-  statusText: {fileID: 0}
+  gameMenuRoot: {fileID: 1650253322}
+  statusText: {fileID: 1335180645}
   titleText: {fileID: 1461325452}
   scoreLabelText: {fileID: 0}
   scoreText: {fileID: 1038224631}
   timeLabelText: {fileID: 0}
   survivalTimeText: {fileID: 925441921}
-  bestScoreText: {fileID: 0}
+  bestScoreText: {fileID: 1373893930}
   countdownText: {fileID: 546421062}
   restartHintText: {fileID: 0}
   backgroundOverlay: {fileID: 320345500}
   cardBg: {fileID: 1830131458}
-  accentBar: {fileID: 0}
-  resultBadge: {fileID: 0}
+  accentBar: {fileID: 1095729028}
+  resultBadge: {fileID: 985550452}
   statsPanelBg: {fileID: 0}
   countdownPanelBg: {fileID: 0}
-  countdownProgress: {fileID: 0}
+  countdownProgress: {fileID: 676723226}
   defeatAccent: {r: 1, g: 0.73, b: 0.16, a: 1}
   defeatCard: {r: 0.2, g: 0.095, b: 0.035, a: 0.98}
   defeatOverlay: {r: 0.02, g: 0.035, b: 0.02, a: 0.68}
@@ -7802,6 +7802,7 @@ RectTransform:
   - {fileID: 1996747717}
   - {fileID: 1572555538}
   - {fileID: 1153401322}
+  - {fileID: 945945916}
   m_Father: {fileID: 1771638443}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -8186,6 +8187,81 @@ CanvasRenderer:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1994910722}
+  m_CullTransparentMesh: 1
+--- !u!1 &183763683
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 945945916}
+  - component: {fileID: 385410842}
+  - component: {fileID: 381884216}
+  m_Layer: 0
+  m_Name: EpitaLogo
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &945945916
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 183763683}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1885851127}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 1, y: 0}
+  m_AnchorMax: {x: 1, y: 0}
+  m_AnchoredPosition: {x: -48, y: 48}
+  m_SizeDelta: {x: 220, y: 149}
+  m_Pivot: {x: 1, y: 0}
+--- !u!114 &381884216
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 183763683}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_RaycastTarget: 0
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 21300000, guid: bd4291fb6781c184faaa6bcec704e652, type: 3}
+  m_Type: 0
+  m_PreserveAspect: 1
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!222 &385410842
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 183763683}
   m_CullTransparentMesh: 1
 --- !u!1 &1996747716
 GameObject:
