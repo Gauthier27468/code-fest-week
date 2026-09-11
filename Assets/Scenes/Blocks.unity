@@ -9415,6 +9415,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 1897518661389716035, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: -20.136305
+      objectReference: {fileID: 0}
+    - target: {fileID: 1897518661389716035, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: -25.028946
+      objectReference: {fileID: 0}
     - target: {fileID: 2362153942084297668, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: m_Name
       value: Bird
@@ -9462,7 +9470,7 @@ PrefabInstance:
     - target: {fileID: 5639783668897378715, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: mainMusic
       value: 
-      objectReference: {fileID: 0}
+      objectReference: {fileID: 8300000, guid: a9e6adbb4ecfee2b68183daaa2e704bb, type: 3}
     - target: {fileID: 5639783668897378715, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: scoreText
       value: 
@@ -9473,6 +9481,18 @@ PrefabInstance:
     - target: {fileID: 5639783668897378715, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
       propertyPath: flapSoundInterval
       value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 8135485107856102068, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0.000010672158
+      objectReference: {fileID: 0}
+    - target: {fileID: 8135485107856102068, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: -143.61676
+      objectReference: {fileID: 0}
+    - target: {fileID: 8135485107856102068, guid: 1596ba6f1e47fe5409aa05848f751b83, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: -24.691305
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
