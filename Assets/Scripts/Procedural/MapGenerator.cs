@@ -59,10 +59,10 @@ public class MapGenerator : MonoBehaviour
     public bool adjustCameraFarClip = true;
 
     [Header("Optimisation des Colliders (Fenêtre Active n et n+1)")]
-    [Tooltip("Si activé, précharge et active uniquement les colliders solides (physiques) du bloc courant et des blocs immédiatement suivants. Les triggers (anneaux, nids, events) restent toujours actifs.")]
+    [Tooltip("N'active les colliders solides que du bloc courant et des suivants. Les triggers (anneaux, nid, events) restent toujours actifs.")]
     public bool preloadOnlyCurrentAndNextColliders = true;
 
-    [Tooltip("Nombre de blocs d'avance pour lesquels les colliders solides sont actifs (1 = bloc n + bloc n+1).")]
+    [Tooltip("Nombre de blocs d'avance dont les colliders solides sont actifs (1 = bloc n + bloc n+1).")]
     [Range(1, 5)]
     public int aheadBlocksColliderCount = 1;
 
@@ -73,60 +73,54 @@ public class MapGenerator : MonoBehaviour
     [Tooltip("Parent des blocs générés. Si vide, ce GameObject.")]
     public Transform blocksParent;
 
-    [Tooltip("Transform de l'oiseau. Trouvé via MoveBird ou le tag Player si laissé vide.")]
+    [Tooltip("Transform de l'oiseau. Trouvé via MoveBird si laissé vide.")]
     public Transform birdTransform;
 
-    [System.Serializable]
-    public class BlockSlot
+    /// <summary>Emplacement d'un bloc du circuit : prévu, instancié, puis détruit.</summary>
+    private class BlockSlot
     {
         public int index;
         public float zPosition;
         public GameObject prefab;
         public GameObject instance;
-        public bool isSpawned => instance != null;
         public bool isDestroyed;
-
-        [System.NonSerialized]
         public Collider[] solidColliders;
-        [System.NonSerialized]
         public bool collidersActive = true;
 
-        public void SetSolidCollidersActive(bool active)
+        public bool IsSpawned => instance != null;
+
+        public void SetSolidCollidersActive(bool active, bool force = false)
         {
-            if (collidersActive == active || solidColliders == null) return;
+            if ((!force && collidersActive == active) || solidColliders == null) return;
             collidersActive = active;
-            for (int i = 0; i < solidColliders.Length; i++)
+            foreach (Collider col in solidColliders)
             {
-                if (solidColliders[i] != null)
-                {
-                    solidColliders[i].enabled = active;
-                }
+                if (col != null) col.enabled = active;
             }
         }
     }
 
     private BlockSlot[] slots;
     private GameObject lastRandomPicked;
+    private int lastColliderUpdateBlockIndex = -1;
 
-    public float TotalMapLength => Mathf.Max(4, totalBlocks) * blockInterval;
-    public float EndingZ => startZ + (Mathf.Max(4, totalBlocks) - 1) * blockInterval;
+    private int BlockCount => Mathf.Max(4, totalBlocks);
+    public float TotalMapLength => BlockCount * blockInterval;
+    public float EndingZ => startZ + (BlockCount - 1) * blockInterval;
+
+    private Transform Parent => blocksParent != null ? blocksParent : transform;
+    private float BirdZ => birdTransform != null ? birdTransform.position.z : startZ;
 
     private void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-        else if (Instance != this)
+        if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
             return;
         }
+        Instance = this;
 
-        if (blocksParent == null)
-        {
-            blocksParent = transform;
-        }
+        if (blocksParent == null) blocksParent = transform;
     }
 
     private void Start()
@@ -135,12 +129,12 @@ public class MapGenerator : MonoBehaviour
         CleanExistingSceneBlocks();
         SetupFog();
         BuildPlan();
-        float initialZ = birdTransform != null ? birdTransform.position.z : startZ;
-        UpdateStreaming(initialZ);
 
+        float birdZ = BirdZ;
+        UpdateStreaming(birdZ);
         if (preloadOnlyCurrentAndNextColliders)
         {
-            UpdateActiveColliders(initialZ, true);
+            UpdateActiveColliders(BlockIndexAt(birdZ), force: true);
         }
     }
 
@@ -155,214 +149,113 @@ public class MapGenerator : MonoBehaviour
         float birdZ = birdTransform.position.z;
         UpdateStreaming(birdZ);
 
-        if (preloadOnlyCurrentAndNextColliders)
-        {
-            UpdateActiveColliders(birdZ);
-        }
-
-        if (destroyPassedBlocks)
-        {
-            UpdateDestruction(birdZ);
-        }
+        if (preloadOnlyCurrentAndNextColliders) UpdateActiveColliders(BlockIndexAt(birdZ));
+        if (destroyPassedBlocks) UpdateDestruction(birdZ);
     }
 
-    /// <summary>Construit le plan des N blocs : Intro, Tuto 1, Tuto 2, aléatoires, Ending.</summary>
-    public void BuildPlan()
+    private void OnValidate()
     {
-        int count = Mathf.Max(4, totalBlocks);
+        totalBlocks = Mathf.Max(4, totalBlocks);
+        blockInterval = Mathf.Max(1f, blockInterval);
+        SetupFog();
+    }
+
+    // ------------------------------------------------------------------ plan du circuit
+
+    /// <summary>Construit le plan des N blocs : Intro, Tuto 1, Tuto 2, aléatoires, Ending.</summary>
+    private void BuildPlan()
+    {
+        int count = BlockCount;
         slots = new BlockSlot[count];
         lastRandomPicked = null;
-
-        List<GameObject> availablePool = null;
-        if (noDuplicates)
-        {
-            availablePool = GetUniquePrefabsPool();
-        }
+        var pool = new List<GameObject>(); // blocs restant à tirer (mode noDuplicates)
 
         for (int i = 0; i < count; i++)
         {
-            GameObject chosenPrefab;
-
-            if (i == 0) chosenPrefab = introPrefab;
-            else if (i == 1) chosenPrefab = tuto1Prefab;
-            else if (i == 2) chosenPrefab = tuto2Prefab;
-            else if (i == count - 1) chosenPrefab = endingPrefab;
-            else
-            {
-                chosenPrefab = PickRandomBlock(ref availablePool);
-                lastRandomPicked = chosenPrefab;
-            }
+            GameObject prefab;
+            if (i == 0) prefab = introPrefab;
+            else if (i == 1) prefab = tuto1Prefab;
+            else if (i == 2) prefab = tuto2Prefab;
+            else if (i == count - 1) prefab = endingPrefab;
+            else prefab = PickRandomBlock(pool);
 
             slots[i] = new BlockSlot
             {
                 index = i,
                 zPosition = startZ + i * blockInterval,
-                prefab = chosenPrefab,
-                instance = null,
-                isDestroyed = false
+                prefab = prefab
             };
         }
     }
 
-    /// <summary>Liste des préfabs uniques et valides configurés dans randomBlockPrefabs.</summary>
-    private List<GameObject> GetUniquePrefabsPool()
-    {
-        var pool = new List<GameObject>();
-        if (randomBlockPrefabs == null) return pool;
-
-        var seen = new HashSet<GameObject>();
-        foreach (var prefab in randomBlockPrefabs)
-        {
-            if (prefab != null && seen.Add(prefab)) pool.Add(prefab);
-        }
-
-        return pool;
-    }
-
     /// <summary>
-    /// Tire un bloc au sort en évitant de répéter le précédent.
-    /// Si noDuplicates, le tirage se fait sans remise dans availablePool (rechargé une fois épuisé).
+    /// Tire un bloc au sort en évitant de répéter le précédent. En mode noDuplicates, le tirage
+    /// se fait sans remise dans pool, rechargé une fois épuisé.
     /// </summary>
-    private GameObject PickRandomBlock(ref List<GameObject> availablePool)
+    private GameObject PickRandomBlock(List<GameObject> pool)
     {
-        if (randomBlockPrefabs == null || randomBlockPrefabs.Count == 0) return null;
-        if (randomBlockPrefabs.Count == 1) return randomBlockPrefabs[0];
-
-        if (noDuplicates)
+        if (noDuplicates && pool.Count == 0)
         {
-            if (availablePool == null || availablePool.Count == 0)
+            foreach (GameObject prefab in randomBlockPrefabs)
             {
-                availablePool = GetUniquePrefabsPool();
-                if (availablePool.Count == 0) return null;
+                if (prefab != null && !pool.Contains(prefab)) pool.Add(prefab);
             }
-
-            int selectedIndex = -1;
-
-            // Plusieurs choix restants : on évite de reprendre le bloc précédent.
-            if (availablePool.Count > 1 && lastRandomPicked != null)
-            {
-                var validIndices = new List<int>();
-                for (int i = 0; i < availablePool.Count; i++)
-                {
-                    if (availablePool[i] != lastRandomPicked) validIndices.Add(i);
-                }
-
-                if (validIndices.Count > 0)
-                {
-                    selectedIndex = validIndices[Random.Range(0, validIndices.Count)];
-                }
-            }
-
-            if (selectedIndex < 0) selectedIndex = Random.Range(0, availablePool.Count);
-
-            GameObject picked = availablePool[selectedIndex];
-            availablePool.RemoveAt(selectedIndex);
-            return picked;
         }
 
-        // Tirage avec remise : on retente simplement tant qu'on retombe sur le bloc précédent.
-        GameObject pickedStandard = null;
-        int attempts = 10;
-        while (attempts-- > 0)
+        List<GameObject> source = noDuplicates ? pool : randomBlockPrefabs;
+        if (source.Count == 0) return null;
+
+        int index = Random.Range(0, source.Count);
+        // Quelques retirages suffisent à éviter le bloc précédent quand il y a le choix.
+        for (int attempt = 0; attempt < 10 && source.Count > 1 && source[index] == lastRandomPicked; attempt++)
         {
-            pickedStandard = randomBlockPrefabs[Random.Range(0, randomBlockPrefabs.Count)];
-            if (pickedStandard != lastRandomPicked) break;
+            index = Random.Range(0, source.Count);
         }
 
-        return pickedStandard != null ? pickedStandard : randomBlockPrefabs[0];
+        GameObject picked = source[index];
+        if (noDuplicates) pool.RemoveAt(index);
+        lastRandomPicked = picked;
+        return picked;
     }
 
+    // ------------------------------------------------------------------ streaming des blocs
+
+    /// <summary>Instancie les blocs qui entrent dans la fenêtre d'avance de l'oiseau.</summary>
     private void UpdateStreaming(float birdZ)
     {
         if (slots == null) return;
 
-        float maxSpawnZ = birdZ + (spawnAheadBlocks * blockInterval);
-
-        for (int i = 0; i < slots.Length; i++)
+        float maxSpawnZ = birdZ + spawnAheadBlocks * blockInterval;
+        foreach (BlockSlot slot in slots)
         {
-            var slot = slots[i];
-            if (slot == null || slot.isDestroyed || slot.isSpawned) continue;
-
             // Blocs ordonnés en Z croissant : le premier trop loin arrête le parcours.
             if (slot.zPosition > maxSpawnZ) break;
-
-            SpawnBlock(i);
+            if (!slot.isDestroyed && !slot.IsSpawned) SpawnBlock(slot);
         }
     }
 
-    private void SpawnBlock(int index)
+    private void SpawnBlock(BlockSlot slot)
     {
-        if (slots == null || index < 0 || index >= slots.Length) return;
-        var slot = slots[index];
-        if (slot.isSpawned || slot.isDestroyed || slot.prefab == null) return;
+        if (slot.prefab == null) return;
 
-        Transform parent = blocksParent != null ? blocksParent : transform;
-        GameObject instance = Instantiate(slot.prefab, new Vector3(0f, 0f, slot.zPosition),
-            Quaternion.identity, parent);
-        instance.name = $"[{slot.index:D2}] {slot.prefab.name} (Z={slot.zPosition:F0})";
-        slot.instance = instance;
-
-        if (slot.prefab == endingPrefab ||
-            instance.name.IndexOf("Ending", System.StringComparison.OrdinalIgnoreCase) >= 0)
-        {
-            SetupEndingBlockNest(instance);
-        }
-
-        // Cache et initialise les colliders solides pour l'optimisation des blocs n et n+1
-        CacheAndInitializeSlotColliders(slot, index);
+        slot.instance = Instantiate(slot.prefab, new Vector3(0f, 0f, slot.zPosition), Quaternion.identity, Parent);
+        slot.instance.name = $"[{slot.index:D2}] {slot.prefab.name} (Z={slot.zPosition:F0})";
+        CacheSolidColliders(slot);
     }
 
-    /// <summary>Garantit qu'un BirdNestTrigger est présent sur le nid du bloc de fin.</summary>
-    private void SetupEndingBlockNest(GameObject endingInstance)
-    {
-        if (endingInstance == null) return;
-        if (endingInstance.GetComponentInChildren<BirdNestTrigger>(true) != null) return;
-
-        Transform nest = endingInstance.transform.Find("Content/Bird Nest")
-                      ?? endingInstance.transform.Find("Bird Nest");
-        if (nest == null)
-        {
-            foreach (Transform child in endingInstance.GetComponentsInChildren<Transform>(true))
-            {
-                if (child.name.IndexOf("Nest", System.StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    nest = child;
-                    break;
-                }
-            }
-        }
-
-        if (nest == null) return;
-
-        Collider col = nest.GetComponent<Collider>();
-        if (col == null)
-        {
-            BoxCollider box = nest.gameObject.AddComponent<BoxCollider>();
-            box.isTrigger = true;
-            box.size = new Vector3(4f, 3f, 4f);
-            box.center = new Vector3(0f, 0.5f, 0f);
-        }
-        else
-        {
-            col.isTrigger = true;
-        }
-
-        nest.gameObject.AddComponent<BirdNestTrigger>();
-    }
-
+    /// <summary>Détruit les blocs que l'oiseau a dépassés de plus de destroyDistanceBehind.</summary>
     private void UpdateDestruction(float birdZ)
     {
         if (slots == null) return;
 
-        for (int i = 0; i < slots.Length; i++)
+        foreach (BlockSlot slot in slots)
         {
-            var slot = slots[i];
-            if (slot == null || !slot.isSpawned || slot.isDestroyed) continue;
+            if (!slot.IsSpawned || slot.isDestroyed) continue;
 
             float blockExitZ = slot.zPosition + blockInterval;
             if (birdZ > blockExitZ + destroyDistanceBehind)
             {
-                if (slot.instance != null) Destroy(slot.instance);
+                Destroy(slot.instance);
                 slot.instance = null;
                 slot.solidColliders = null;
                 slot.isDestroyed = true;
@@ -370,107 +263,69 @@ public class MapGenerator : MonoBehaviour
         }
     }
 
+    // ------------------------------------------------------------------ fenêtre de colliders actifs
+
     /// <summary>
-    /// Met en cache tous les colliders physiques solides (!isTrigger) du bloc instancié.
-    /// Les triggers (HoopScore, ActivateOnTrigger, BirdNestTrigger) restent préservés et toujours actifs.
+    /// Met en cache les colliders solides (!isTrigger) du bloc et les règle selon la fenêtre
+    /// active. Les triggers (anneaux, nid, events) ne sont jamais touchés.
     /// </summary>
-    private void CacheAndInitializeSlotColliders(BlockSlot slot, int blockIndex)
+    private void CacheSolidColliders(BlockSlot slot)
     {
-        if (slot == null || slot.instance == null) return;
-
-        Collider[] allCols = slot.instance.GetComponentsInChildren<Collider>(true);
-        List<Collider> solidList = new List<Collider>(allCols.Length);
-
-        for (int i = 0; i < allCols.Length; i++)
+        var solids = new List<Collider>();
+        foreach (Collider col in slot.instance.GetComponentsInChildren<Collider>(true))
         {
-            Collider col = allCols[i];
-            // On isole strictement les colliders solides pouvant tuer l'oiseau en cas de collision
-            if (col != null && !col.isTrigger)
-            {
-                solidList.Add(col);
-            }
+            if (!col.isTrigger) solids.Add(col);
         }
-
-        slot.solidColliders = solidList.ToArray();
+        slot.solidColliders = solids.ToArray();
 
         if (preloadOnlyCurrentAndNextColliders)
         {
-            int currentBlock = GetCurrentBirdBlockIndex();
-            bool shouldBeActive = IsBlockInActiveColliderWindow(blockIndex, currentBlock);
-            slot.collidersActive = shouldBeActive;
-            for (int i = 0; i < slot.solidColliders.Length; i++)
-            {
-                if (slot.solidColliders[i] != null)
-                {
-                    slot.solidColliders[i].enabled = shouldBeActive;
-                }
-            }
-        }
-        else
-        {
-            slot.collidersActive = true;
+            slot.SetSolidCollidersActive(IsInActiveColliderWindow(slot.index, BlockIndexAt(BirdZ)), force: true);
         }
     }
 
-    /// <summary>
-    /// Calcule l'index du bloc sur lequel se situe actuellement l'oiseau.
-    /// </summary>
-    public int GetCurrentBirdBlockIndex()
+    /// <summary>Index du bloc situé à la position Z donnée.</summary>
+    private int BlockIndexAt(float z)
     {
-        float birdZ = birdTransform != null ? birdTransform.position.z : startZ;
-        if (birdZ < startZ) return 0;
-        int idx = Mathf.FloorToInt((birdZ - startZ) / blockInterval);
-        int maxIndex = (slots != null && slots.Length > 0) ? slots.Length - 1 : Mathf.Max(3, totalBlocks - 1);
-        return Mathf.Clamp(idx, 0, maxIndex);
+        int index = Mathf.FloorToInt((z - startZ) / blockInterval);
+        return Mathf.Clamp(index, 0, BlockCount - 1);
     }
 
-    /// <summary>
-    /// Vérifie si un bloc donné fait partie de la fenêtre active des colliders (bloc actuel n et n+1).
-    /// </summary>
-    public bool IsBlockInActiveColliderWindow(int blockIndex, int currentBlock)
+    /// <summary>Le bloc fait-il partie de la fenêtre active (n, n+1... et éventuellement n-1) ?</summary>
+    private bool IsInActiveColliderWindow(int blockIndex, int currentBlock)
     {
         int minActive = keepPreviousBlockColliders ? currentBlock - 1 : currentBlock;
         int maxActive = currentBlock + aheadBlocksColliderCount;
         return blockIndex >= minActive && blockIndex <= maxActive;
     }
 
-    private int lastColliderUpdateBlockIndex = -999;
-
-    /// <summary>
-    /// Met à jour l'état activé/désactivé des colliders solides en fonction de la position de l'oiseau.
-    /// Zéro allocation Garbage Collector à l'exécution.
-    /// </summary>
-    public void UpdateActiveColliders(float birdZ, bool forceUpdate = false)
+    /// <summary>Réajuste les colliders à chaque changement de bloc. Zéro allocation.</summary>
+    private void UpdateActiveColliders(int currentBlock, bool force = false)
     {
-        if (slots == null) return;
-
-        int currentBlock = GetCurrentBirdBlockIndex();
-        if (!forceUpdate && currentBlock == lastColliderUpdateBlockIndex) return;
+        if (slots == null || (!force && currentBlock == lastColliderUpdateBlockIndex)) return;
         lastColliderUpdateBlockIndex = currentBlock;
 
-        for (int i = 0; i < slots.Length; i++)
+        foreach (BlockSlot slot in slots)
         {
-            var slot = slots[i];
-            if (slot == null || !slot.isSpawned || slot.isDestroyed) continue;
-
-            bool shouldBeActive = IsBlockInActiveColliderWindow(i, currentBlock);
-            slot.SetSolidCollidersActive(shouldBeActive);
+            if (slot.IsSpawned && !slot.isDestroyed)
+            {
+                slot.SetSolidCollidersActive(IsInActiveColliderWindow(slot.index, currentBlock));
+            }
         }
     }
 
-    /// <summary>
-    /// Configure le brouillard (Linear Fog) et le farClipPlane de la caméra.
-    /// </summary>
-    public void SetupFog()
+    // ------------------------------------------------------------------ mise en place
+
+    /// <summary>Brouillard linéaire, et farClipPlane de la caméra calé sur sa fin.</summary>
+    private void SetupFog()
     {
         if (!enableFog) return;
-
-        RenderSettings.fog = true;
-        RenderSettings.fogMode = FogMode.Linear;
 
         float startDist = Mathf.Max(0f, fogStartBlocks * blockInterval);
         float endDist = Mathf.Max(startDist + 10f, fogEndBlocks * blockInterval);
 
+        RenderSettings.fog = true;
+        RenderSettings.fogMode = FogMode.Linear;
         RenderSettings.fogStartDistance = startDist;
         RenderSettings.fogEndDistance = endDist;
 
@@ -478,10 +333,7 @@ public class MapGenerator : MonoBehaviour
         if (cam != null)
         {
             RenderSettings.fogColor = cam.backgroundColor;
-            if (adjustCameraFarClip)
-            {
-                cam.farClipPlane = endDist + 20f;
-            }
+            if (adjustCameraFarClip) cam.farClipPlane = endDist + 20f;
         }
     }
 
@@ -489,50 +341,21 @@ public class MapGenerator : MonoBehaviour
     {
         if (birdTransform != null) return;
 
-        MoveBird birdScript = Object.FindAnyObjectByType<MoveBird>();
-        if (birdScript != null)
-        {
-            birdTransform = birdScript.transform;
-            return;
-        }
-
-        GameObject playerObj = GameObject.FindWithTag("Player");
-        if (playerObj != null)
-        {
-            birdTransform = playerObj.transform;
-            return;
-        }
-
-        if (Camera.main != null)
-        {
-            birdTransform = Camera.main.transform;
-        }
+        MoveBird bird = FindAnyObjectByType<MoveBird>();
+        if (bird != null) birdTransform = bird.transform;
     }
 
     /// <summary>Supprime les blocs statiques laissés dans la scène, hors de ce générateur.</summary>
     private void CleanExistingSceneBlocks()
     {
-        var existingBounds = Object.FindObjectsByType<BlockBounds>(FindObjectsSortMode.None);
-        foreach (var b in existingBounds)
+        foreach (BlockBounds block in FindObjectsByType<BlockBounds>())
         {
-            if (b == null || b.transform == transform || b.transform.IsChildOf(transform)) continue;
-            if (blocksParent != null &&
-                (b.transform == blocksParent || b.transform.IsChildOf(blocksParent))) continue;
-
-            Destroy(b.gameObject);
+            if (block.transform.IsChildOf(transform) || block.transform.IsChildOf(Parent)) continue;
+            Destroy(block.gameObject);
         }
     }
 
-    private void OnValidate()
-    {
-        totalBlocks = Mathf.Max(4, totalBlocks);
-        blockInterval = Mathf.Max(1f, blockInterval);
-        aheadBlocksColliderCount = Mathf.Clamp(aheadBlocksColliderCount, 1, 5);
-        if (enableFog)
-        {
-            SetupFog();
-        }
-    }
+    // ------------------------------------------------------------------ outils éditeur
 
 #if UNITY_EDITOR
     [ContextMenu("Auto-Assigner Préfabs depuis le Projet")]
@@ -558,9 +381,9 @@ public class MapGenerator : MonoBehaviour
         };
 
         randomBlockPrefabs.Clear();
-        foreach (string name in randomNames)
+        foreach (string prefabName in randomNames)
         {
-            GameObject go = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(envPath + name);
+            GameObject go = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(envPath + prefabName);
             if (go != null) randomBlockPrefabs.Add(go);
         }
 
@@ -574,16 +397,13 @@ public class MapGenerator : MonoBehaviour
         ClearMapEditor();
         BuildPlan();
 
-        Transform parent = blocksParent != null ? blocksParent : transform;
-        for (int i = 0; i < slots.Length; i++)
+        foreach (BlockSlot slot in slots)
         {
-            var slot = slots[i];
-            if (slot == null || slot.prefab == null) continue;
+            if (slot.prefab == null) continue;
 
-            GameObject instance = (GameObject)UnityEditor.PrefabUtility.InstantiatePrefab(slot.prefab, parent);
+            var instance = (GameObject)UnityEditor.PrefabUtility.InstantiatePrefab(slot.prefab, Parent);
             instance.transform.position = new Vector3(0f, 0f, slot.zPosition);
             instance.name = $"[PREVIEW {slot.index:D2}] {slot.prefab.name} (Z={slot.zPosition:F0})";
-            slot.instance = instance;
         }
 
         Debug.Log($"[MapGenerator] Preview générée ({slots.Length} blocs).");
@@ -592,7 +412,7 @@ public class MapGenerator : MonoBehaviour
     [ContextMenu("Nettoyer la Map (Éditeur)")]
     public void ClearMapEditor()
     {
-        Transform parent = blocksParent != null ? blocksParent : transform;
+        Transform parent = Parent;
         for (int i = parent.childCount - 1; i >= 0; i--)
         {
             DestroyImmediate(parent.GetChild(i).gameObject);
@@ -608,39 +428,35 @@ public class MapGenerator : MonoBehaviour
     }
 #endif
 
+    /// <summary>Blocs (vert = colliders actifs, gris = inactifs) et bornes du brouillard.</summary>
     private void OnDrawGizmosSelected()
     {
-        int count = Mathf.Max(4, totalBlocks);
-        int currentBlock = Application.isPlaying ? GetCurrentBirdBlockIndex() : 0;
+        int currentBlock = BlockIndexAt(BirdZ);
 
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < BlockCount; i++)
         {
             float z = startZ + i * blockInterval;
-            Vector3 center = new Vector3(3.9f, 5.5f, z + blockInterval * 0.5f);
-            Vector3 size = new Vector3(9.8f, 8f, blockInterval);
-
             if (Application.isPlaying && preloadOnlyCurrentAndNextColliders)
             {
-                bool isActive = IsBlockInActiveColliderWindow(i, currentBlock);
-                Gizmos.color = isActive ? new Color(0f, 1f, 0.2f, 0.85f) : new Color(0.4f, 0.4f, 0.4f, 0.2f);
+                Gizmos.color = IsInActiveColliderWindow(i, currentBlock)
+                    ? new Color(0f, 1f, 0.2f, 0.85f)
+                    : new Color(0.4f, 0.4f, 0.4f, 0.2f);
             }
             else
             {
                 Gizmos.color = Color.green;
             }
 
-            Gizmos.DrawWireCube(center, size);
+            Gizmos.DrawWireCube(new Vector3(3.9f, 5.5f, z + blockInterval * 0.5f), new Vector3(9.8f, 8f, blockInterval));
         }
 
         if (!enableFog) return;
 
-        float birdZ = birdTransform != null ? birdTransform.position.z : startZ;
+        float fogStart = BirdZ + fogStartBlocks * blockInterval;
+        float fogEnd = BirdZ + fogEndBlocks * blockInterval;
         Gizmos.color = Color.yellow;
-        float fogStart = birdZ + fogStartBlocks * blockInterval;
         Gizmos.DrawLine(new Vector3(-5f, 5f, fogStart), new Vector3(15f, 5f, fogStart));
-
         Gizmos.color = Color.cyan;
-        float fogEnd = birdZ + fogEndBlocks * blockInterval;
         Gizmos.DrawLine(new Vector3(-5f, 5f, fogEnd), new Vector3(15f, 5f, fogEnd));
     }
 }

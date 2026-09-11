@@ -48,7 +48,7 @@ class PoseEstimator:
         # de profondeur (segmentation.py) ne laissant qu'une personne dans l'image, chercher
         # plusieurs poses est devenu redondant.
         # Import différé : permet d'utiliser capture.py/tracking.py/gestures.py/protocol.py
-        # sans dépendre de mediapipe (utile tant que le blocage ci-dessus n'est pas résolu).
+        # (et leurs tests) sans dépendre de mediapipe.
         import mediapipe as mp
         from mediapipe.tasks import python as mp_python
         from mediapipe.tasks.python import vision

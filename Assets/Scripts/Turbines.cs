@@ -1,15 +1,16 @@
 using UnityEngine;
 
+/// <summary>Rotation continue d'un élément de décor (pales d'éolienne).</summary>
 public class Turbines : MonoBehaviour
 {
+    [Tooltip("Vitesse de rotation, en degrés par seconde.")]
     public float rotationSpeed = 100f;
+
+    [Tooltip("Axe de rotation local.")]
     public Vector3 rotateVector = new Vector3(0f, 0f, 1f);
 
-    // Update is called once per frame
-    void Update()
+    private void Update()
     {
-
-        Vector3 rotation = rotateVector * rotationSpeed * Time.deltaTime;
-        transform.Rotate(rotation);
+        transform.Rotate(rotateVector * (rotationSpeed * Time.deltaTime));
     }
 }

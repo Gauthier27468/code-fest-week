@@ -1,28 +1,23 @@
 using UnityEngine;
 using UnityEngine.Serialization;
 
-/// <summary>
-/// Mode de comportement vertical pour les ballons / montgolfières.
-/// </summary>
+/// <summary>Comportement vertical d'un ballon / d'une montgolfière.</summary>
 public enum AscentMode
 {
-    [Tooltip("Monte jusqu'à la limite max puis s'arrête et reste sur place à cette hauteur.")]
+    /// <summary>Monte jusqu'à la limite puis reste sur place à cette hauteur.</summary>
     StopAtMax,
-
-    [Tooltip("Monte jusqu'en haut, reste sur place pendant une pause, redescend, fait une pause en bas, et recommence.")]
+    /// <summary>Monte, marque une pause, redescend, marque une pause, et recommence.</summary>
     PingPong,
-
-    [Tooltip("Monte jusqu'en haut puis se réinitialise en bas.")]
+    /// <summary>Monte jusqu'en haut puis repart d'en bas.</summary>
     Loop,
-
-    [Tooltip("Aucune montée : reste directement sur place à sa position initiale.")]
+    /// <summary>Reste à sa hauteur initiale.</summary>
     None
 }
 
 /// <summary>
-/// Script gérant le comportement de flottaison et d'ascension pour les montgolfières / ballons.
-/// Permet d'obtenir un mouvement fluide, naturel et désynchronisé entre tous les ballons de la scène,
-/// tout en garantissant qu'ils restent dans la zone de jeu pour servir d'obstacles.
+/// Flottaison des montgolfières / ballons : montée, balancement, dérive et oscillation.
+/// Chaque ballon tire ses propres variations au démarrage pour ne pas bouger en synchro avec
+/// les autres, et un plafond absolu le garde dans la zone de vol (il sert d'obstacle).
 /// </summary>
 public class BalloonFloating : MonoBehaviour
 {
@@ -42,7 +37,7 @@ public class BalloonFloating : MonoBehaviour
     [Tooltip("Active une montée ou un déplacement vertical.")]
     [SerializeField] private bool enableAscent = true;
 
-    [Tooltip("Comportement d'ascension :\n- StopAtMax : monte jusqu'à maxAscentDistance et reste définitivement sur place.\n- PingPong : monte, reste sur place un moment (pause), redescend, fait une pause, etc.\n- Loop : monte puis boucle depuis le bas.\n- None : reste sur place dès le début.")]
+    [Tooltip("StopAtMax : monte puis reste en haut. PingPong : monte, pause, redescend, pause... Loop : monte puis repart d'en bas. None : reste sur place.")]
     [SerializeField] private AscentMode ascentMode = AscentMode.StopAtMax;
 
     [Tooltip("Vitesse de montée et descente (mètres par seconde).")]
@@ -54,16 +49,12 @@ public class BalloonFloating : MonoBehaviour
     [FormerlySerializedAs("maxAltitude")]
     [SerializeField] private float maxAscentDistance = 1.5f;
 
-    [Tooltip("Durée de pause (en secondes) pendant laquelle le ballon reste immobile sur place aux extrémités (en mode PingPong).")]
+    [Tooltip("Durée de pause (en secondes) aux extrémités, en mode PingPong.")]
     [Range(0f, 10f)]
     [SerializeField] private float pauseDuration = 3f;
 
-    [Tooltip("Plafond d'altitude maximale absolue dans le monde pour éviter que le ballon ne sorte de la zone de vol de l'oiseau (0 = désactivé).")]
+    [Tooltip("Altitude monde maximale, pour que le ballon ne sorte pas de la zone de vol de l'oiseau (0 = désactivé).")]
     [SerializeField] private float clampMaxWorldAltitude = 9.0f;
-
-    [FormerlySerializedAs("loopAscent")]
-    [HideInInspector]
-    [SerializeField] private bool _legacyLoopAscent = false;
 
     [Header("--- Dérive Horizontale (Vent / Sway) ---")]
     [Tooltip("Active une légère dérive horizontale simulant les courants d'air.")]
@@ -94,221 +85,154 @@ public class BalloonFloating : MonoBehaviour
     [SerializeField] private float slowYawSpeed = 1.0f;
 
     [Header("--- Aléatoire / Désynchronisation ---")]
-    [Tooltip("Pourcentage de variation aléatoire appliqué aux vitesses et amplitudes (0 = identique, 0.5 = ±50%).")]
+    [Tooltip("Variation aléatoire appliquée aux vitesses et amplitudes (0 = identique, 0.5 = ±50%).")]
     [Range(0f, 0.8f)]
     [SerializeField] private float randomnessFactor = 0.35f;
 
-    // Positions et rotations de base
     private Vector3 _basePosition;
-    private Quaternion _initialRotation;
+    private Quaternion _baseRotation; // tourne lentement autour de Y (lacet)
 
-    // Décalages et graines aléatoires uniques par instance
+    // Réglages propres à ce ballon, tirés au sort au démarrage.
     private float _timeOffset;
     private float _noiseSeedX;
     private float _noiseSeedZ;
-    private float _actualBobAmp;
-    private float _actualBobFreq;
-    private float _actualAscentSpeed;
-    private float _actualMaxAscentDistance;
-    private float _actualPauseDuration;
-    private float _actualDriftAmp;
-    private float _actualDriftFreq;
-    private float _actualTiltAngle;
-    private float _actualTiltSpeed;
-    private float _actualYawSpeed;
+    private float _bobAmp;
+    private float _bobFreq;
+    private float _ascentSpeed;
+    private float _maxAscent;
+    private float _pauseDuration;
+    private float _driftAmp;
+    private float _driftFreq;
+    private float _tiltAngle;
+    private float _tiltSpeed;
+    private float _yawSpeed;
 
-    private float _accumulatedAscent = 0f;
-    private float _initialY = 0f;
+    // État de la montée.
+    private float _ascent;
     private bool _isAscending = true;
-    private bool _isPaused = false;
-    private float _pauseTimer = 0f;
-
-    public AscentMode CurrentAscentMode { get => ascentMode; set => ascentMode = value; }
-    public float MaxAscentDistance { get => maxAscentDistance; set => maxAscentDistance = value; }
-    public float PauseDuration { get => pauseDuration; set => pauseDuration = value; }
+    private bool _isPaused;
+    private float _pauseTimer;
 
     private void Awake()
     {
         _basePosition = transform.position;
-        _initialY = _basePosition.y;
-        _initialRotation = transform.rotation;
-
-        if (_legacyLoopAscent && ascentMode == AscentMode.StopAtMax)
-        {
-            ascentMode = AscentMode.Loop;
-        }
-
+        _baseRotation = transform.rotation;
         InitializeRandomOffsets();
     }
 
-    /// <summary>
-    /// Initialise des valeurs uniques pour ce ballon afin d'éviter tout mouvement synchronisé avec les autres.
-    /// </summary>
+    /// <summary>Tire des réglages uniques pour que ce ballon ne bouge pas en synchro avec les autres.</summary>
     private void InitializeRandomOffsets()
     {
-        // Déphasage temporel aléatoire
         _timeOffset = Random.Range(0f, 1000f);
         _noiseSeedX = Random.Range(0f, 1000f);
         _noiseSeedZ = Random.Range(0f, 1000f);
 
-        // Variation aléatoire des paramètres
-        _actualBobAmp = bobAmplitude * (1f + Random.Range(-randomnessFactor, randomnessFactor));
-        _actualBobFreq = bobFrequency * (1f + Random.Range(-randomnessFactor, randomnessFactor));
-        _actualAscentSpeed = ascentSpeed * (1f + Random.Range(-randomnessFactor, randomnessFactor));
-        _actualMaxAscentDistance = maxAscentDistance * (1f + Random.Range(-randomnessFactor * 0.5f, randomnessFactor * 0.5f));
-        _actualPauseDuration = pauseDuration * (1f + Random.Range(-randomnessFactor * 0.3f, randomnessFactor * 0.3f));
-        _actualDriftAmp = driftAmplitude * (1f + Random.Range(-randomnessFactor, randomnessFactor));
-        _actualDriftFreq = driftFrequency * (1f + Random.Range(-randomnessFactor, randomnessFactor));
-        _actualTiltAngle = maxTiltAngle * (1f + Random.Range(-randomnessFactor, randomnessFactor));
-        _actualTiltSpeed = tiltSpeed * (1f + Random.Range(-randomnessFactor, randomnessFactor));
-        
-        // Rotation lacet aléatoire (sens horaire ou anti-horaire)
+        _bobAmp = Vary(bobAmplitude, randomnessFactor);
+        _bobFreq = Vary(bobFrequency, randomnessFactor);
+        _ascentSpeed = Vary(ascentSpeed, randomnessFactor);
+        _maxAscent = Vary(maxAscentDistance, randomnessFactor * 0.5f);
+        _pauseDuration = Vary(pauseDuration, randomnessFactor * 0.3f);
+        _driftAmp = Vary(driftAmplitude, randomnessFactor);
+        _driftFreq = Vary(driftFrequency, randomnessFactor);
+        _tiltAngle = Vary(maxTiltAngle, randomnessFactor);
+        _tiltSpeed = Vary(tiltSpeed, randomnessFactor);
+
+        // Lacet dans un sens ou dans l'autre.
         float direction = Random.value > 0.5f ? 1f : -1f;
-        _actualYawSpeed = slowYawSpeed * direction * (1f + Random.Range(-randomnessFactor, randomnessFactor));
+        _yawSpeed = direction * Vary(slowYawSpeed, randomnessFactor);
 
         if (ascentMode == AscentMode.PingPong)
         {
-            // Déphasage initial pour désynchroniser les ballons
-            _accumulatedAscent = Random.Range(0f, _actualMaxAscentDistance);
+            // Point de départ aléatoire dans le cycle.
+            _ascent = Random.Range(0f, _maxAscent);
             _isAscending = Random.value > 0.5f;
             if (Random.value > 0.5f)
             {
                 _isPaused = true;
-                _pauseTimer = Random.Range(0.5f, _actualPauseDuration);
+                _pauseTimer = Random.Range(0.5f, _pauseDuration);
             }
         }
     }
+
+    /// <summary>value ± variation (en proportion de value).</summary>
+    private static float Vary(float value, float variation) =>
+        value * (1f + Random.Range(-variation, variation));
 
     private void Update()
     {
         float time = Time.time + _timeOffset;
 
-        // 1. Déplacement vertical / Ascension
-        if (enableAscent && ascentMode != AscentMode.None)
-        {
-            switch (ascentMode)
-            {
-                case AscentMode.StopAtMax:
-                    // Monte jusqu'à la limite puis s'arrête et reste définitivement sur place à cette hauteur
-                    if (_accumulatedAscent < _actualMaxAscentDistance)
-                    {
-                        _accumulatedAscent += _actualAscentSpeed * Time.deltaTime;
-                        if (_accumulatedAscent >= _actualMaxAscentDistance)
-                        {
-                            _accumulatedAscent = _actualMaxAscentDistance;
-                        }
-                    }
-                    break;
+        if (enableAscent) UpdateAscent(Time.deltaTime);
 
-                case AscentMode.PingPong:
-                    // Monte, fait une pause sur place (obstacle temporaire), redescend, fait une pause en bas, et recommence
-                    if (_isPaused)
-                    {
-                        _pauseTimer -= Time.deltaTime;
-                        if (_pauseTimer <= 0f)
-                        {
-                            _isPaused = false;
-                            _isAscending = !_isAscending;
-                        }
-                    }
-                    else
-                    {
-                        if (_isAscending)
-                        {
-                            _accumulatedAscent += _actualAscentSpeed * Time.deltaTime;
-                            if (_accumulatedAscent >= _actualMaxAscentDistance)
-                            {
-                                _accumulatedAscent = _actualMaxAscentDistance;
-                                _isPaused = true;
-                                _pauseTimer = _actualPauseDuration;
-                            }
-                        }
-                        else
-                        {
-                            _accumulatedAscent -= _actualAscentSpeed * Time.deltaTime;
-                            if (_accumulatedAscent <= 0f)
-                            {
-                                _accumulatedAscent = 0f;
-                                _isPaused = true;
-                                _pauseTimer = _actualPauseDuration;
-                            }
-                        }
-                    }
-                    break;
-
-                case AscentMode.Loop:
-                    // Monte et se réinitialise en bas une fois en haut
-                    _accumulatedAscent += _actualAscentSpeed * Time.deltaTime;
-                    if (_accumulatedAscent >= _actualMaxAscentDistance)
-                    {
-                        _accumulatedAscent = 0f;
-                    }
-                    break;
-            }
-        }
-
-        // 2. Flottaison verticale (onde sinusoïdale + harmonique)
-        float verticalOffset = 0f;
+        // Balancement : onde principale + harmonique lente, plus naturel qu'un simple sinus.
+        float bob = 0f;
         if (enableBobbing)
         {
-            // Combinaison d'une onde principale et d'une onde secondaire pour un flottement plus naturel
-            verticalOffset = Mathf.Sin(time * _actualBobFreq) * _actualBobAmp
-                           + Mathf.Sin(time * _actualBobFreq * 0.45f) * (_actualBobAmp * 0.25f);
+            bob = Mathf.Sin(time * _bobFreq) * _bobAmp
+                + Mathf.Sin(time * _bobFreq * 0.45f) * (_bobAmp * 0.25f);
         }
 
-        // 3. Dérive horizontale via Perlin Noise pour une turbulence douce et continue
+        // Dérive : bruit de Perlin, pour une turbulence douce et continue.
         float driftX = 0f;
         float driftZ = 0f;
         if (enableDrift)
         {
-            driftX = (Mathf.PerlinNoise(time * _actualDriftFreq, _noiseSeedX) - 0.5f) * 2f * _actualDriftAmp;
-            driftZ = (Mathf.PerlinNoise(_noiseSeedZ, time * _actualDriftFreq) - 0.5f) * 2f * _actualDriftAmp;
+            driftX = (Mathf.PerlinNoise(time * _driftFreq, _noiseSeedX) - 0.5f) * 2f * _driftAmp;
+            driftZ = (Mathf.PerlinNoise(_noiseSeedZ, time * _driftFreq) - 0.5f) * 2f * _driftAmp;
         }
 
-        // 4. Calcul de la hauteur avec limitation de plafond absolue (pour ne pas sortir de la zone de vol de l'oiseau)
-        float targetY = _basePosition.y + _accumulatedAscent + verticalOffset;
-        if (clampMaxWorldAltitude > 0f && targetY > clampMaxWorldAltitude)
-        {
-            targetY = clampMaxWorldAltitude;
-        }
+        float y = _basePosition.y + _ascent + bob;
+        if (clampMaxWorldAltitude > 0f) y = Mathf.Min(y, clampMaxWorldAltitude);
 
-        // Application de la position calculée
-        Vector3 targetPosition = new Vector3(
-            _basePosition.x + driftX,
-            targetY,
-            _basePosition.z + driftZ
-        );
-        transform.position = targetPosition;
+        transform.position = new Vector3(_basePosition.x + driftX, y, _basePosition.z + driftZ);
 
-        // 5. Oscillation et rotation angulaire (légère inclinaison et rotation douce)
-        Quaternion targetRotation = _initialRotation;
+        // Lacet continu, puis oscillation de la nacelle par-dessus.
+        _baseRotation = Quaternion.Euler(0f, _yawSpeed * Time.deltaTime, 0f) * _baseRotation;
 
+        Quaternion rotation = _baseRotation;
         if (enableTilt)
         {
-            float pitch = Mathf.Sin(time * _actualTiltSpeed) * _actualTiltAngle;
-            float roll = Mathf.Cos(time * _actualTiltSpeed * 0.8f) * _actualTiltAngle;
-            targetRotation = _initialRotation * Quaternion.Euler(pitch, 0f, roll);
+            float pitch = Mathf.Sin(time * _tiltSpeed) * _tiltAngle;
+            float roll = Mathf.Cos(time * _tiltSpeed * 0.8f) * _tiltAngle;
+            rotation *= Quaternion.Euler(pitch, 0f, roll);
         }
-
-        if (Mathf.Abs(_actualYawSpeed) > 0.001f)
-        {
-            // Rotation lente et continue sur l'axe Y
-            _initialRotation = Quaternion.Euler(0f, _actualYawSpeed * Time.deltaTime, 0f) * _initialRotation;
-        }
-
-        transform.rotation = targetRotation;
+        transform.rotation = rotation;
     }
 
-    /// <summary>
-    /// Permet de réinitialiser la position de base à la position actuelle si nécessaire.
-    /// </summary>
-    public void ResetBasePosition()
+    private void UpdateAscent(float dt)
     {
-        _basePosition = transform.position;
-        _initialY = _basePosition.y;
-        _accumulatedAscent = 0f;
-        _isAscending = true;
-        _isPaused = false;
-        _pauseTimer = 0f;
+        switch (ascentMode)
+        {
+            case AscentMode.StopAtMax:
+                _ascent = Mathf.Min(_ascent + _ascentSpeed * dt, _maxAscent);
+                break;
+
+            case AscentMode.PingPong:
+                if (_isPaused)
+                {
+                    _pauseTimer -= dt;
+                    if (_pauseTimer <= 0f)
+                    {
+                        _isPaused = false;
+                        _isAscending = !_isAscending;
+                    }
+                }
+                else
+                {
+                    _ascent += (_isAscending ? _ascentSpeed : -_ascentSpeed) * dt;
+                    if (_ascent >= _maxAscent || _ascent <= 0f)
+                    {
+                        _ascent = Mathf.Clamp(_ascent, 0f, _maxAscent);
+                        _isPaused = true;
+                        _pauseTimer = _pauseDuration;
+                    }
+                }
+                break;
+
+            case AscentMode.Loop:
+                _ascent += _ascentSpeed * dt;
+                if (_ascent >= _maxAscent) _ascent = 0f;
+                break;
+        }
     }
 }

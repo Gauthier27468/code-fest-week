@@ -21,8 +21,7 @@ namespace KiBird.FX
             public float gravity;
             public float duration;
             public float destroyAfter;
-            public Color color;
-            /// <summary>Dégradé appliqué sur la durée de vie. Null = couleur fixe.</summary>
+            /// <summary>Dégradé de couleur sur la durée de vie (ou palette, si randomColor).</summary>
             public Gradient gradient;
             /// <summary>Couleur aléatoire tirée du dégradé par particule (confettis multicolores).</summary>
             public bool randomColor;
@@ -79,9 +78,6 @@ namespace KiBird.FX
             sizeOverLifetime = BuildCurve((0f, 0.85f), (0.15f, 1f), (0.75f, 1f), (1f, 0.15f)),
             materialResource = "M_Confetti"
         };
-
-        /// <summary>Éclats / confettis au franchissement d'un anneau (alias rétrocompatible).</summary>
-        public static Settings HoopSparkles => HoopConfetti;
 
         /// <summary>Confettis à l'arrivée dans le nid.</summary>
         public static Settings VictoryConfetti => new Settings
@@ -155,35 +151,22 @@ namespace KiBird.FX
             main.simulationSpace = ParticleSystemSimulationSpace.World;
             main.stopAction = ParticleSystemStopAction.Destroy;
 
-            if (s.gradient != null)
+            var colorOverLifetime = ps.colorOverLifetime;
+            colorOverLifetime.enabled = true;
+            if (s.randomColor)
             {
-                if (s.randomColor)
+                // Chaque particule tire sa couleur dans le dégradé, puis s'estompe en fin de vie.
+                main.startColor = new ParticleSystem.MinMaxGradient(s.gradient)
                 {
-                    var minMaxGrad = new ParticleSystem.MinMaxGradient(s.gradient)
-                    {
-                        mode = ParticleSystemGradientMode.RandomColor
-                    };
-                    main.startColor = minMaxGrad;
-
-                    var col = ps.colorOverLifetime;
-                    col.enabled = true;
-                    var fadeGrad = new Gradient();
-                    fadeGrad.SetKeys(
-                        new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
-                        new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 0.75f), new GradientAlphaKey(0f, 1f) }
-                    );
-                    col.color = fadeGrad;
-                }
-                else
-                {
-                    var col = ps.colorOverLifetime;
-                    col.enabled = true;
-                    col.color = s.gradient;
-                }
+                    mode = ParticleSystemGradientMode.RandomColor
+                };
+                colorOverLifetime.color = BuildGradient(
+                    new[] { Color.white, Color.white }, new[] { 0f, 1f },
+                    new[] { 1f, 1f, 0f }, new[] { 0f, 0.75f, 1f });
             }
             else
             {
-                main.startColor = s.color;
+                colorOverLifetime.color = s.gradient;
             }
 
             if (s.spin)

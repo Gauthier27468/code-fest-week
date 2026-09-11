@@ -1,32 +1,20 @@
 using UnityEngine;
 
+/// <summary>Joue le son de l'AudioSource quand le rocher touche le sol (tag "Ground").</summary>
 public class RockSound : MonoBehaviour
 {
+    private AudioSource audioSource;
 
-    AudioSource audioSource;
-
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    private void Awake()
     {
         audioSource = GetComponent<AudioSource>();
     }
 
-    // Update is called once per frame
-    void Update()
+    private void OnCollisionEnter(Collision collision)
     {
-
-    }
-
-    public void OnCollisionEnter(Collision collision)
-    {
-        if (collision.gameObject.CompareTag("Ground"))
+        if (audioSource != null && collision.gameObject.CompareTag("Ground"))
         {
-            // Play rock sound effect
-            AudioSource audioSource = GetComponent<AudioSource>();
-            if (audioSource != null)
-            {
-                audioSource.Play();
-            }
+            audioSource.Play();
         }
     }
 }

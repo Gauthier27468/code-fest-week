@@ -36,7 +36,7 @@ public class MapGeneratorEditor : Editor
         EditorGUILayout.HelpBox(
             $"Longueur totale calculée : {generator.TotalMapLength}m ({generator.totalBlocks} blocs x {generator.blockInterval}m).\n" +
             $"Fin du circuit à Z = {generator.EndingZ}m.\n" +
-            $"Brouillard : débute à {generator.fogStartBlocks * generator.blockInterval}m (3 blocs), masque tout à {generator.fogEndBlocks * generator.blockInterval}m (5 blocs).",
+            $"Brouillard : débute à {generator.fogStartBlocks * generator.blockInterval}m ({generator.fogStartBlocks} blocs), masque tout à {generator.fogEndBlocks * generator.blockInterval}m ({generator.fogEndBlocks} blocs).",
             MessageType.Info
         );
     }

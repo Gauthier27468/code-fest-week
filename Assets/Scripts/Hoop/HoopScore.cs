@@ -30,13 +30,12 @@ public class HoopScore : MonoBehaviour
         triggerCollider.isTrigger = true;
     }
 
-    public void OnTriggerEnter(Collider other)
+    private void OnTriggerEnter(Collider other)
     {
         if (isCollected) return;
 
-        if (other.CompareTag("Player") ||
-            other.GetComponentInParent<MoveBird>() != null ||
-            other.GetComponent<MoveBird>() != null)
+        // GetComponentInParent inclut l'objet lui-même.
+        if (other.CompareTag("Player") || other.GetComponentInParent<MoveBird>() != null)
         {
             CollectHoop();
         }

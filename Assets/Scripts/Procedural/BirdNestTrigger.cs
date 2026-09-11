@@ -19,7 +19,8 @@ public class BirdNestTrigger : MonoBehaviour
     {
         if (hasWon || !other.CompareTag("Player")) return;
 
-        MoveBird bird = other.GetComponent<MoveBird>() ?? other.GetComponentInParent<MoveBird>();
+        // GetComponentInParent inclut l'objet lui-même (et évite `??`, qui ignore le null Unity).
+        MoveBird bird = other.GetComponentInParent<MoveBird>();
         if (bird == null) return;
 
         hasWon = true;

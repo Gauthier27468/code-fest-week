@@ -2,27 +2,26 @@ using KiBird.MainMenu;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
-#if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
-#endif
 
 /// <summary>
-/// Met à jour l'écran de résultat sérialisé dans Blocks.unity.
-/// La disposition et le style vivent dans la hiérarchie Unity, pas dans ce script.
+/// Écran de fin de partie (défaite ou victoire) : score, temps, record, puis rechargement
+/// automatique de la scène pour le joueur suivant.
+/// La disposition et le style vivent dans la hiérarchie Unity (Blocks.unity), pas dans ce script.
 /// </summary>
 public class GameOverUI : MonoBehaviour
 {
     public static GameOverUI Instance { get; private set; }
 
     [Header("Réinitialisation")]
-    [Tooltip("Décoche pour garder l'écran de fin affiché indéfiniment (pratique pour tester/observer le visuel) : plus de redémarrage automatique, seul Espace/R/Entrée relance (si activé ci-dessous).")]
+    [Tooltip("Décocher pour garder l'écran de fin affiché indéfiniment (test du visuel) : seul Espace/R/Entrée relance alors, si autorisé ci-dessous.")]
     public bool autoRestart = true;
     [Min(0.1f)] public float autoResetDelay = 5f;
     public bool allowInstantRestartKeys = true;
 
     [Header("Références - objet GameOverMenu")]
     public GameObject rootPanel;
-    [Tooltip("Le HUD de jeu (GameMenu : score, temps de survie affichés en haut à gauche pendant le vol) à masquer quand ce panneau s'affiche.")]
+    [Tooltip("HUD de jeu (score, temps) à masquer quand ce panneau s'affiche.")]
     public GameObject gameMenuRoot;
     public Text statusText;
     public Text titleText;
@@ -61,30 +60,19 @@ public class GameOverUI : MonoBehaviour
     public AudioClip defeatSound;
     public AudioClip victorySound;
 
+    private static readonly Color Cream = new Color(1f, 0.94f, 0.75f);
+
     private float countdownTimer;
     private bool isGameOverActive;
 
-    private static readonly Color Cream = new Color(1f, 0.94f, 0.75f);
-    private static readonly Color Moss = new Color(0.62f, 0.83f, 0.46f);
-
     private void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-        else if (Instance != this)
+        if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
             return;
         }
-
-#if UNITY_EDITOR
-        if (victorySound == null)
-        {
-            victorySound = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/AssetStore/Sounds/victory.wav");
-        }
-#endif
+        Instance = this;
 
         if (rootPanel == null)
         {
@@ -113,71 +101,8 @@ public class GameOverUI : MonoBehaviour
         if (Instance == this) Instance = null;
     }
 
-    private void HandleBirdDied() => ShowGameOver(false);
-    private void HandleBirdWon() => ShowGameOver(true);
-    public void ShowVictory() => ShowGameOver(true);
-
-    public void ShowGameOver(bool victory = false)
-    {
-        if (isGameOverActive || rootPanel == null) return;
-        DisplayResult(victory, forceNewRecord: false);
-    }
-
-    // Clic droit sur le composant (en Play mode) > "Debug : Afficher Nouveau Record" pour
-    // prévisualiser le panneau sans avoir à rejouer/battre le record à chaque fois.
-    [ContextMenu("Debug : Afficher Nouveau Record")]
-    private void DebugShowNewRecord()
-    {
-        if (rootPanel == null) return;
-        isGameOverActive = false;
-        DisplayResult(false, forceNewRecord: true);
-    }
-
-    [ContextMenu("Debug : Afficher Victoire")]
-    private void DebugShowVictory()
-    {
-        if (rootPanel == null) return;
-        isGameOverActive = false;
-        DisplayResult(true, forceNewRecord: false);
-    }
-
-    [ContextMenu("Debug : Afficher Victoire + Nouveau Record")]
-    private void DebugShowVictoryNewRecord()
-    {
-        if (rootPanel == null) return;
-        isGameOverActive = false;
-        DisplayResult(true, forceNewRecord: true);
-    }
-
-    private void DisplayResult(bool victory, bool forceNewRecord)
-    {
-        isGameOverActive = true;
-        countdownTimer = Mathf.Max(0.1f, autoResetDelay);
-        rootPanel.SetActive(true);
-        if (gameMenuRoot != null) gameMenuRoot.SetActive(false);
-
-        int currentScore = MoveBird.CurrentScore;
-        int bestScore = ScoreManager.GetBestScore();
-        bool isNewRecord = forceNewRecord || (currentScore > 0 && currentScore > bestScore);
-
-        ApplyTheme(victory, isNewRecord);
-        if (scoreText != null) scoreText.text = $"{currentScore:N0} PTS";
-        // bestScore vient encore du classement d'AVANT ce vol (AddScore n'est appelé
-        // qu'après, pour comparer isNewRecord au bon ancien record) : si ce vol bat le
-        // record, affiche le score courant plutôt que l'ancien, sinon l'écran de victoire
-        // afficherait le record qu'on vient tout juste de dépasser.
-        int displayedBest = isNewRecord ? currentScore : bestScore;
-        if (bestScoreText != null) bestScoreText.text = $"{displayedBest:N0} PTS";
-
-        int secondsTotal = Mathf.FloorToInt(MoveBird.SurvivalTime);
-        if (survivalTimeText != null)
-        {
-            survivalTimeText.text = $"{secondsTotal / 60:D2}:{secondsTotal % 60:D2}";
-        }
-
-        UpdateCountdownLabel();
-        PlayResultSound(victory);
-    }
+    private void HandleBirdDied() => ShowResult(victory: false);
+    private void HandleBirdWon() => ShowResult(victory: true);
 
     private void Update()
     {
@@ -197,14 +122,48 @@ public class GameOverUI : MonoBehaviour
         if (countdownTimer <= 0f) RestartScene();
     }
 
+    public void RestartScene()
+    {
+        isGameOverActive = false;
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    // ------------------------------------------------------------------ affichage
+
+    private void ShowResult(bool victory, bool forceNewRecord = false)
+    {
+        if (isGameOverActive) return;
+
+        isGameOverActive = true;
+        countdownTimer = autoResetDelay;
+        rootPanel.SetActive(true);
+        if (gameMenuRoot != null) gameMenuRoot.SetActive(false);
+
+        // bestScore vient du classement d'AVANT ce vol : MoveBird n'appelle AddScore qu'après
+        // l'événement, pour que la comparaison se fasse avec l'ancien record.
+        int currentScore = MoveBird.CurrentScore;
+        int bestScore = ScoreManager.GetBestScore();
+        bool isNewRecord = forceNewRecord || (currentScore > 0 && currentScore > bestScore);
+
+        ApplyTheme(victory, isNewRecord);
+
+        if (scoreText != null) scoreText.text = $"{currentScore:N0} PTS";
+        // Record battu : affiche le nouveau record plutôt que celui qu'on vient de dépasser.
+        if (bestScoreText != null) bestScoreText.text = $"{(isNewRecord ? currentScore : bestScore):N0} PTS";
+
+        int seconds = Mathf.FloorToInt(MoveBird.SurvivalTime);
+        if (survivalTimeText != null) survivalTimeText.text = $"{seconds / 60:D2}:{seconds % 60:D2}";
+
+        UpdateCountdownLabel();
+        PlayResultSound(victory);
+    }
+
     private void ApplyTheme(bool victory, bool isNewRecord)
     {
         Color accent = victory ? victoryAccent : defeatAccent;
         Color subPanel = victory ? victorySubPanel : defeatSubPanel;
 
-        // Uniquement l'annonce de nouveau record : pas de texte "FIN DU VOL" / "PARCOURS
-        // TERMINÉ" générique (retiré de la scène), donc on masque statusText le reste du temps
-        // plutôt que de lui laisser un texte par défaut.
+        // statusText ne sert qu'à l'annonce de nouveau record : masqué le reste du temps.
         if (statusText != null)
         {
             statusText.gameObject.SetActive(isNewRecord);
@@ -212,15 +171,14 @@ public class GameOverUI : MonoBehaviour
             {
                 statusText.text = "NOUVEAU RECORD !";
                 statusText.color = newRecordColor;
+                if (statusText.GetComponent<PulseEffect>() == null) statusText.gameObject.AddComponent<PulseEffect>();
 
-                if (statusText.GetComponent<PulseEffect>() == null)
-                {
-                    statusText.gameObject.AddComponent<PulseEffect>();
-                }
-
-                SpawnRecordConfetti();
+                // Confettis en UI (et non ParticleBurst, rendu par la caméra donc toujours
+                // derrière un Canvas Overlay) : garantis au premier plan, autour du texte.
+                UIConfettiBurst.SpawnBurst(statusText.rectTransform);
             }
         }
+
         if (titleText != null)
         {
             titleText.text = victory ? "VICTOIRE !" : "GAME OVER";
@@ -230,9 +188,7 @@ public class GameOverUI : MonoBehaviour
         if (timeLabelText != null) timeLabelText.text = victory ? "TEMPS DE VOL" : "TEMPS DE SURVIE";
         if (restartHintText != null)
         {
-            restartHintText.text = allowInstantRestartKeys
-                ? "ESPACE POUR REJOUER"
-                : "PRÉPAREZ LE PROCHAIN PILOTE";
+            restartHintText.text = allowInstantRestartKeys ? "ESPACE POUR REJOUER" : "PRÉPAREZ LE PROCHAIN PILOTE";
         }
 
         if (backgroundOverlay != null) backgroundOverlay.color = victory ? victoryOverlay : defeatOverlay;
@@ -245,32 +201,17 @@ public class GameOverUI : MonoBehaviour
         if (scoreText != null) scoreText.color = Cream;
     }
 
-    // Confettis UI (pas ParticleBurst, utilisé pour HoopScore/BirdNestTrigger : ce dernier est
-    // un ParticleSystem 3D rendu par la caméra, donc toujours DERRIÈRE un Canvas Screen Space -
-    // Overlay). Centrés sur le texte "NOUVEAU RECORD !" et garantis au premier plan.
-    private void SpawnRecordConfetti()
-    {
-        UIConfettiBurst.SpawnBurst(statusText.rectTransform);
-    }
-
     private void UpdateCountdownLabel()
     {
         if (!autoRestart)
         {
-            if (countdownText != null)
-            {
-                countdownText.text = allowInstantRestartKeys ? "ESPACE POUR CONTINUER" : "";
-            }
+            if (countdownText != null) countdownText.text = allowInstantRestartKeys ? "ESPACE POUR CONTINUER" : "";
             if (countdownProgress != null) countdownProgress.fillAmount = 0f;
             return;
         }
 
-        int remaining = Mathf.Max(0, Mathf.CeilToInt(countdownTimer));
-        if (countdownText != null) countdownText.text = $"NOUVEAU VOL DANS {remaining}s";
-        if (countdownProgress != null)
-        {
-            countdownProgress.fillAmount = Mathf.Clamp01(countdownTimer / Mathf.Max(0.1f, autoResetDelay));
-        }
+        if (countdownText != null) countdownText.text = $"NOUVEAU VOL DANS {Mathf.Max(0, Mathf.CeilToInt(countdownTimer))}s";
+        if (countdownProgress != null) countdownProgress.fillAmount = Mathf.Clamp01(countdownTimer / autoResetDelay);
     }
 
     private void PlayResultSound(bool victory)
@@ -290,21 +231,29 @@ public class GameOverUI : MonoBehaviour
         }
     }
 
-    private bool IsRestartKeyPressed()
+    private static bool IsRestartKeyPressed()
     {
-#if ENABLE_INPUT_SYSTEM
         Keyboard keyboard = Keyboard.current;
-        return keyboard != null && (keyboard.spaceKey.wasPressedThisFrame || keyboard.rKey.wasPressedThisFrame ||
-                                    keyboard.enterKey.wasPressedThisFrame);
-#else
-        return Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.R) ||
-               Input.GetKeyDown(KeyCode.Return);
-#endif
+        return keyboard != null &&
+               (keyboard.spaceKey.wasPressedThisFrame || keyboard.rKey.wasPressedThisFrame || keyboard.enterKey.wasPressedThisFrame);
     }
 
-    public void RestartScene()
+    // ------------------------------------------------------------------ prévisualisation (Play mode)
+
+    // Clic droit sur le composant > "Debug : ..." pour voir un écran sans rejouer une partie.
+    [ContextMenu("Debug : Afficher Nouveau Record")]
+    private void DebugShowNewRecord() => DebugPreview(victory: false, newRecord: true);
+
+    [ContextMenu("Debug : Afficher Victoire")]
+    private void DebugShowVictory() => DebugPreview(victory: true, newRecord: false);
+
+    [ContextMenu("Debug : Afficher Victoire + Nouveau Record")]
+    private void DebugShowVictoryNewRecord() => DebugPreview(victory: true, newRecord: true);
+
+    private void DebugPreview(bool victory, bool newRecord)
     {
+        if (rootPanel == null) return;
         isGameOverActive = false;
-        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        ShowResult(victory, newRecord);
     }
 }

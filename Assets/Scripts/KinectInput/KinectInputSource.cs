@@ -15,9 +15,6 @@ public class KinectInputSource : MonoBehaviour
 {
     public static KinectInputSource Instance { get; private set; }
 
-    /// <summary>Mettre a false avant le chargement de scene pour gerer l'ecouteur soi-meme.</summary>
-    public static bool AutoBootstrap = true;
-
     [Header("Reseau")]
     [Tooltip("Doit correspondre au --port du bridge Python (defaut 7777).")]
     public int port = 7777;
@@ -58,7 +55,6 @@ public class KinectInputSource : MonoBehaviour
         public bool InZone;
         public float Distance;
         public float Lean, Lift, Throttle, Glide;
-        public float Confidence;
     }
 
     /// <summary>Ecart de sequence au-dela duquel on considere que le bridge Python a redemarre.</summary>
@@ -96,7 +92,6 @@ public class KinectInputSource : MonoBehaviour
 
     public float Distance => _current.Distance;
     public float Glide => _current.Glide;
-    public float Confidence => _current.Confidence;
     public bool InZone => _current.InZone;
     public uint Sequence => _current.Seq;
 
@@ -114,7 +109,7 @@ public class KinectInputSource : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void AutoCreate()
     {
-        if (!AutoBootstrap || Instance != null) return;
+        if (Instance != null) return;
 
         var go = new GameObject("KinectInput (auto)");
         go.AddComponent<KinectInputSource>();
@@ -252,7 +247,7 @@ public class KinectInputSource : MonoBehaviour
                 _pending.Lift = ReadFloat(span, 26);
                 _pending.Throttle = ReadFloat(span, 30);
                 _pending.Glide = ReadFloat(span, 34);
-                _pending.Confidence = ReadFloat(span, 38);
+                // Octets 38-41 : confiance moyenne du squelette, non utilisee cote Unity.
 
                 int count = Mathf.Min(buffer[42], JointCount);
                 for (int i = 0; i < count; i++)

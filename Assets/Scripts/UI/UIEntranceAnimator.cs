@@ -3,8 +3,8 @@ using UnityEngine;
 namespace KiBird.MainMenu
 {
     /// <summary>
-    /// Petite animation d'apparition sans tween externe. Elle fonctionne avec le temps non mis à
-    /// l'échelle pour rester fluide sur les écrans de pause et de fin de partie.
+    /// Apparition en fondu + léger zoom à chaque activation de l'élément, sans librairie de tween.
+    /// Utilise le temps non mis à l'échelle pour rester fluide sur les écrans de pause et de fin.
     /// </summary>
     [RequireComponent(typeof(CanvasGroup))]
     public sealed class UIEntranceAnimator : MonoBehaviour
@@ -20,18 +20,15 @@ namespace KiBird.MainMenu
         private void Awake()
         {
             canvasGroup = GetComponent<CanvasGroup>();
-            rectTransform = transform as RectTransform;
-            restingScale = rectTransform != null ? rectTransform.localScale : Vector3.one;
+            rectTransform = (RectTransform)transform;
+            restingScale = rectTransform.localScale;
         }
 
         private void OnEnable()
         {
             elapsed = 0f;
-            if (canvasGroup == null) canvasGroup = GetComponent<CanvasGroup>();
-            if (rectTransform == null) rectTransform = transform as RectTransform;
-
             canvasGroup.alpha = 0f;
-            if (rectTransform != null) rectTransform.localScale = restingScale * startScale;
+            rectTransform.localScale = restingScale * startScale;
         }
 
         private void Update()
@@ -39,14 +36,11 @@ namespace KiBird.MainMenu
             if (elapsed >= duration) return;
 
             elapsed = Mathf.Min(duration, elapsed + Time.unscaledDeltaTime);
-            float t = Mathf.Clamp01(elapsed / duration);
-            float eased = 1f - Mathf.Pow(1f - t, 3f);
+            float t = elapsed / duration;
+            float eased = 1f - Mathf.Pow(1f - t, 3f); // ease-out cubique
 
             canvasGroup.alpha = eased;
-            if (rectTransform != null)
-            {
-                rectTransform.localScale = Vector3.LerpUnclamped(restingScale * startScale, restingScale, eased);
-            }
+            rectTransform.localScale = Vector3.LerpUnclamped(restingScale * startScale, restingScale, eased);
         }
     }
 }

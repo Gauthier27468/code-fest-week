@@ -1,9 +1,10 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Gère l'activation séquentielle automatique du glow des panneaux le long de l'axe Z.
-/// Éteint le panneau actuel lors de la sortie du trigger et allume le panneau suivant sur Z.
+/// Allume les panneaux du tutoriel l'un après l'autre : quand l'oiseau sort du trigger d'un
+/// panneau allumé, celui-ci s'éteint et le panneau suivant sur l'axe Z s'allume.
 /// </summary>
 public class SignGlower : MonoBehaviour
 {
@@ -13,18 +14,19 @@ public class SignGlower : MonoBehaviour
     private static readonly int ActivationTimeId = Shader.PropertyToID("_ActivationTime");
 
     [Header("Trigger")]
-    [Tooltip("Collider servant de zone de passage (Trigger).")]
+    [Tooltip("Zone de passage (Trigger). Si vide, cherchée parmi les colliders enfants.")]
     [SerializeField] private Collider passageTriggerCollider;
 
     [Header("Options")]
-    [Tooltip("Cocher sur le 1er panneau (ou laissé automatique selon Z).")]
+    [Tooltip("Allumé dès le départ. Le premier panneau sur l'axe Z s'allume de toute façon.")]
     [SerializeField] private bool startGlowing = false;
 
-    [Tooltip("Durée de montée en douceur (en secondes) pour commencer au glow le plus bas et éviter le flash lumineux.")]
+    [Tooltip("Durée de montée progressive du glow (en secondes), pour éviter un flash lumineux.")]
     [SerializeField] private float fadeInDuration = 0.4f;
 
     [SerializeField] private string playerTag = "Player";
 
+    /// <summary>Matériau et ses valeurs de glow d'origine (à pleine intensité).</summary>
     private struct CachedMaterial
     {
         public Material material;
@@ -37,186 +39,17 @@ public class SignGlower : MonoBehaviour
     private Coroutine fadeCoroutine;
     private bool isGlowing;
     private bool hasTriggeredExit;
-    private bool isInitialized;
-
-    public bool IsGlowing => isGlowing;
 
     private void Awake()
     {
-        Initialize();
-    }
-
-    private void Start()
-    {
-        // Si non coché explicitement, le premier panneau sur l'axe Z s'allume automatiquement
-        if (!startGlowing && IsFirstSignOnZ())
-        {
-            startGlowing = true;
-        }
-
-        SetGlow(startGlowing, animate: false);
-    }
-
-    private void Initialize()
-    {
-        if (isInitialized) return;
-        isInitialized = true;
-
         SetupTrigger();
         CacheMaterials();
     }
 
-    private void SetupTrigger()
+    private void Start()
     {
-        if (passageTriggerCollider == null)
-        {
-            Collider[] colliders = GetComponentsInChildren<Collider>(true);
-            foreach (Collider col in colliders)
-            {
-                if (col.isTrigger)
-                {
-                    passageTriggerCollider = col;
-                    break;
-                }
-            }
-
-            if (passageTriggerCollider == null && colliders.Length > 1)
-            {
-                passageTriggerCollider = colliders[1];
-            }
-            else if (passageTriggerCollider == null && colliders.Length == 1)
-            {
-                passageTriggerCollider = colliders[0];
-            }
-        }
-
-        if (passageTriggerCollider != null)
-        {
-            passageTriggerCollider.isTrigger = true;
-
-            if (passageTriggerCollider.gameObject != this.gameObject)
-            {
-                SignTriggerProxy proxy = passageTriggerCollider.GetComponent<SignTriggerProxy>();
-                if (proxy == null)
-                {
-                    proxy = passageTriggerCollider.gameObject.AddComponent<SignTriggerProxy>();
-                }
-                proxy.Init(this);
-            }
-        }
-    }
-
-    private void CacheMaterials()
-    {
-        Renderer rend = GetComponent<Renderer>();
-        Renderer[] renderers = rend != null ? new[] { rend } : GetComponentsInChildren<Renderer>(true);
-
-        foreach (Renderer r in renderers)
-        {
-            if (r == null) continue;
-
-            foreach (Material mat in r.materials)
-            {
-                if (mat == null) continue;
-
-                CachedMaterial data = new CachedMaterial
-                {
-                    material = mat,
-                    glowStrength = mat.HasProperty(GlowStrengthId) ? mat.GetFloat(GlowStrengthId) : 0f,
-                    emissionColor = mat.HasProperty(EmissionColorId) ? mat.GetColor(EmissionColorId) : Color.black,
-                    neonColor = mat.HasProperty(NeonColorId) ? mat.GetColor(NeonColorId) : Color.black
-                };
-
-                if (data.glowStrength <= 0f && mat.HasProperty(GlowStrengthId))
-                {
-                    data.glowStrength = 0.1f;
-                }
-
-                cachedMaterials.Add(data);
-            }
-        }
-    }
-
-    public void SetGlow(bool active, bool animate = true)
-    {
-        if (!isInitialized) Initialize();
-        isGlowing = active;
-
-        if (fadeCoroutine != null)
-        {
-            StopCoroutine(fadeCoroutine);
-            fadeCoroutine = null;
-        }
-
-        if (active)
-        {
-            // Transmet le timestamp d'activation au cas où le shader graph utilise _ActivationTime
-            for (int i = 0; i < cachedMaterials.Count; i++)
-            {
-                Material m = cachedMaterials[i].material;
-                if (m != null && m.HasProperty(ActivationTimeId))
-                {
-                    m.SetFloat(ActivationTimeId, Time.time);
-                }
-            }
-
-            // Démarre au glow le plus bas (0) puis monte en douceur pour éliminer le flash
-            if (animate && fadeInDuration > 0f && gameObject.activeInHierarchy)
-            {
-                fadeCoroutine = StartCoroutine(FadeInRoutine());
-            }
-            else
-            {
-                SetGlowIntensity(1f);
-            }
-        }
-        else
-        {
-            SetGlowIntensity(0f);
-        }
-    }
-
-    private System.Collections.IEnumerator FadeInRoutine()
-    {
-        float elapsed = 0f;
-        SetGlowIntensity(0f); // Démarre au glow minimum (0)
-
-        while (elapsed < fadeInDuration)
-        {
-            elapsed += Time.deltaTime;
-            float t = Mathf.Clamp01(elapsed / fadeInDuration);
-            // Courbe fluide (smoothstep) pour faire monter le glow sans à-coup
-            float factor = Mathf.SmoothStep(0f, 1f, t);
-            SetGlowIntensity(factor);
-            yield return null;
-        }
-
-        SetGlowIntensity(1f);
-        fadeCoroutine = null;
-    }
-
-    private void SetGlowIntensity(float factor)
-    {
-        for (int i = 0; i < cachedMaterials.Count; i++)
-        {
-            CachedMaterial data = cachedMaterials[i];
-            if (data.material == null) continue;
-
-            if (factor > 0f)
-            {
-                if (data.material.HasProperty(GlowStrengthId)) data.material.SetFloat(GlowStrengthId, data.glowStrength * factor);
-                if (data.material.HasProperty(EmissionColorId)) data.material.SetColor(EmissionColorId, data.emissionColor);
-                if (data.material.HasProperty(NeonColorId)) data.material.SetColor(NeonColorId, data.neonColor);
-                data.material.EnableKeyword("_EMISSION");
-            }
-            else
-            {
-                if (data.material.HasProperty(GlowStrengthId)) data.material.SetFloat(GlowStrengthId, 0f);
-                if (data.material.HasProperty(EmissionColorId)) data.material.SetColor(EmissionColorId, Color.black);
-                if (data.material.HasProperty(NeonColorId)) data.material.SetColor(NeonColorId, Color.black);
-                data.material.DisableKeyword("_EMISSION");
-            }
-        }
+        if (!startGlowing && IsFirstSignOnZ()) startGlowing = true;
+        SetGlow(startGlowing, animate: false);
     }
 
     private void OnDisable()
@@ -228,85 +61,198 @@ public class SignGlower : MonoBehaviour
         }
     }
 
-    private void OnTriggerExit(Collider other)
+    private void OnDestroy()
     {
-        HandleTriggerExit(other);
+        // Les matériaux sont des copies créées par renderer.materials : à libérer.
+        foreach (CachedMaterial data in cachedMaterials)
+        {
+            if (data.material != null) Destroy(data.material);
+        }
+        cachedMaterials.Clear();
     }
+
+    // ------------------------------------------------------------------ mise en place
+
+    private void SetupTrigger()
+    {
+        if (passageTriggerCollider == null)
+        {
+            // Premier trigger trouvé ; à défaut le 2e collider (le 1er étant en général celui du
+            // panneau lui-même), ou le seul disponible.
+            Collider[] colliders = GetComponentsInChildren<Collider>(true);
+            foreach (Collider col in colliders)
+            {
+                if (col.isTrigger)
+                {
+                    passageTriggerCollider = col;
+                    break;
+                }
+            }
+            if (passageTriggerCollider == null && colliders.Length > 0)
+            {
+                passageTriggerCollider = colliders[Mathf.Min(1, colliders.Length - 1)];
+            }
+        }
+
+        if (passageTriggerCollider == null) return;
+
+        passageTriggerCollider.isTrigger = true;
+
+        // Trigger sur un autre objet : un relais lui fait remonter OnTriggerExit jusqu'ici.
+        if (passageTriggerCollider.gameObject != gameObject)
+        {
+            SignTriggerProxy proxy = passageTriggerCollider.GetComponent<SignTriggerProxy>();
+            if (proxy == null) proxy = passageTriggerCollider.gameObject.AddComponent<SignTriggerProxy>();
+            proxy.Init(this);
+        }
+    }
+
+    private void CacheMaterials()
+    {
+        Renderer ownRenderer = GetComponent<Renderer>();
+        Renderer[] renderers = ownRenderer != null ? new[] { ownRenderer } : GetComponentsInChildren<Renderer>(true);
+
+        foreach (Renderer r in renderers)
+        {
+            foreach (Material mat in r.materials)
+            {
+                if (mat == null) continue;
+
+                var data = new CachedMaterial
+                {
+                    material = mat,
+                    glowStrength = mat.HasProperty(GlowStrengthId) ? mat.GetFloat(GlowStrengthId) : 0f,
+                    emissionColor = mat.HasProperty(EmissionColorId) ? mat.GetColor(EmissionColorId) : Color.black,
+                    neonColor = mat.HasProperty(NeonColorId) ? mat.GetColor(NeonColorId) : Color.black
+                };
+
+                // Un glow nul à l'origine resterait invisible une fois « allumé ».
+                if (data.glowStrength <= 0f && mat.HasProperty(GlowStrengthId)) data.glowStrength = 0.1f;
+
+                cachedMaterials.Add(data);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ allumage
+
+    public void SetGlow(bool active, bool animate = true)
+    {
+        isGlowing = active;
+
+        if (fadeCoroutine != null)
+        {
+            StopCoroutine(fadeCoroutine);
+            fadeCoroutine = null;
+        }
+
+        if (!active)
+        {
+            SetGlowIntensity(0f);
+            return;
+        }
+
+        // Horodatage d'activation, pour les shaders qui animent l'allumage via _ActivationTime.
+        foreach (CachedMaterial data in cachedMaterials)
+        {
+            if (data.material != null && data.material.HasProperty(ActivationTimeId))
+            {
+                data.material.SetFloat(ActivationTimeId, Time.time);
+            }
+        }
+
+        if (animate && fadeInDuration > 0f && gameObject.activeInHierarchy)
+        {
+            fadeCoroutine = StartCoroutine(FadeInRoutine());
+        }
+        else
+        {
+            SetGlowIntensity(1f);
+        }
+    }
+
+    /// <summary>Monte le glow de 0 à 1 en douceur (smoothstep).</summary>
+    private IEnumerator FadeInRoutine()
+    {
+        float elapsed = 0f;
+        SetGlowIntensity(0f);
+
+        while (elapsed < fadeInDuration)
+        {
+            elapsed += Time.deltaTime;
+            SetGlowIntensity(Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / fadeInDuration)));
+            yield return null;
+        }
+
+        SetGlowIntensity(1f);
+        fadeCoroutine = null;
+    }
+
+    /// <summary>0 = éteint (émission coupée), 1 = glow d'origine.</summary>
+    private void SetGlowIntensity(float factor)
+    {
+        bool on = factor > 0f;
+        foreach (CachedMaterial data in cachedMaterials)
+        {
+            Material m = data.material;
+            if (m == null) continue;
+
+            if (m.HasProperty(GlowStrengthId)) m.SetFloat(GlowStrengthId, on ? data.glowStrength * factor : 0f);
+            if (m.HasProperty(EmissionColorId)) m.SetColor(EmissionColorId, on ? data.emissionColor : Color.black);
+            if (m.HasProperty(NeonColorId)) m.SetColor(NeonColorId, on ? data.neonColor : Color.black);
+
+            if (on) m.EnableKeyword("_EMISSION");
+            else m.DisableKeyword("_EMISSION");
+        }
+    }
+
+    // ------------------------------------------------------------------ passage de l'oiseau
+
+    private void OnTriggerExit(Collider other) => HandleTriggerExit(other);
 
     public void HandleTriggerExit(Collider other)
     {
         if (hasTriggeredExit || !isGlowing) return;
-
-        bool isPlayer = other.CompareTag(playerTag) ||
-                        other.GetComponentInParent<MoveBird>() != null ||
-                        other.GetComponent<MoveBird>() != null;
-
-        if (!isPlayer) return;
+        if (!other.CompareTag(playerTag) && other.GetComponentInParent<MoveBird>() == null) return;
 
         hasTriggeredExit = true;
-
-        // 1. Coupe le glow de ce panneau
         SetGlow(false);
 
-        // 2. Trouve et allume dynamiquement le panneau suivant sur l'axe Z
         SignGlower nextSign = FindNextSignOnZ();
-        if (nextSign != null)
-        {
-            nextSign.SetGlow(true);
-        }
+        if (nextSign != null) nextSign.SetGlow(true);
     }
 
+    /// <summary>Panneau le plus proche devant celui-ci sur l'axe Z.</summary>
     private SignGlower FindNextSignOnZ()
     {
-        SignGlower[] allSigns = FindObjectsByType<SignGlower>(FindObjectsSortMode.None);
         SignGlower nextSign = null;
         float myZ = transform.position.z;
         float minDeltaZ = float.MaxValue;
 
-        foreach (SignGlower sign in allSigns)
+        foreach (SignGlower sign in FindObjectsByType<SignGlower>())
         {
-            if (sign == this) continue;
-
             float deltaZ = sign.transform.position.z - myZ;
-            if (deltaZ > 0.01f && deltaZ < minDeltaZ)
+            if (sign != this && deltaZ > 0.01f && deltaZ < minDeltaZ)
             {
                 minDeltaZ = deltaZ;
                 nextSign = sign;
             }
         }
-
         return nextSign;
     }
 
     private bool IsFirstSignOnZ()
     {
-        SignGlower[] allSigns = FindObjectsByType<SignGlower>(FindObjectsSortMode.None);
         float myZ = transform.position.z;
-
-        foreach (SignGlower sign in allSigns)
+        foreach (SignGlower sign in FindObjectsByType<SignGlower>())
         {
-            if (sign != this && sign.transform.position.z < myZ - 0.01f)
-            {
-                return false;
-            }
+            if (sign != this && sign.transform.position.z < myZ - 0.01f) return false;
         }
-
         return true;
-    }
-
-    private void OnDestroy()
-    {
-        for (int i = 0; i < cachedMaterials.Count; i++)
-        {
-            if (cachedMaterials[i].material != null)
-            {
-                Destroy(cachedMaterials[i].material);
-            }
-        }
-        cachedMaterials.Clear();
     }
 }
 
+/// <summary>Relaie OnTriggerExit d'un collider enfant vers son SignGlower.</summary>
 public class SignTriggerProxy : MonoBehaviour
 {
     private SignGlower owner;
