@@ -7,7 +7,7 @@ permissions:
 on:
   workflow_dispatch:
     branches:
-      - 'releases/**'
+      - 'release/**'
       - 'main'
 
 jobs:
