@@ -158,11 +158,16 @@ public class GameOverUI : MonoBehaviour
 
         int currentScore = MoveBird.CurrentScore;
         int bestScore = ScoreManager.GetBestScore();
-        bool isNewRecord = forceNewRecord || (currentScore > 0 && currentScore >= bestScore);
+        bool isNewRecord = forceNewRecord || (currentScore > 0 && currentScore > bestScore);
 
         ApplyTheme(victory, isNewRecord);
         if (scoreText != null) scoreText.text = $"{currentScore:N0} PTS";
-        if (bestScoreText != null) bestScoreText.text = $"{bestScore:N0} PTS";
+        // bestScore vient encore du classement d'AVANT ce vol (AddScore n'est appelé
+        // qu'après, pour comparer isNewRecord au bon ancien record) : si ce vol bat le
+        // record, affiche le score courant plutôt que l'ancien, sinon l'écran de victoire
+        // afficherait le record qu'on vient tout juste de dépasser.
+        int displayedBest = isNewRecord ? currentScore : bestScore;
+        if (bestScoreText != null) bestScoreText.text = $"{displayedBest:N0} PTS";
 
         int secondsTotal = Mathf.FloorToInt(MoveBird.SurvivalTime);
         if (survivalTimeText != null)

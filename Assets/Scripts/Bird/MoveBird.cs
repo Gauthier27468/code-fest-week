@@ -124,7 +124,6 @@ public class MoveBird : MonoBehaviour
     {
         bonusScore += points;
         CurrentScore += points;
-        KiBird.MainMenu.ScoreManager.UpdateSessionBest(CurrentScore);
     }
 
     /// <summary>Table des scores 0..1999 sous forme de string, construite une seule fois.</summary>
@@ -292,7 +291,6 @@ public class MoveBird : MonoBehaviour
         if (newScore != CurrentScore)
         {
             CurrentScore = newScore;
-            KiBird.MainMenu.ScoreManager.UpdateSessionBest(CurrentScore);
         }
 
 #if ENABLE_INPUT_SYSTEM
@@ -421,8 +419,10 @@ public class MoveBird : MonoBehaviour
             AddBonusScore(finishBonus);
         }
 
-        KiBird.MainMenu.ScoreManager.AddScore(CurrentScore);
         Debug.Log($"[MoveBird] Victoire ! L'oiseau s'est posé dans le nid. Score final : {CurrentScore} pts | Survie : {SurvivalTime:F1}s");
+
+        // Invoqué AVANT AddScore : GameOverUI doit comparer le score de ce vol au meilleur
+        // score des vols précédents, pas au classement déjà mis à jour avec ce même score.
         OnBirdWon?.Invoke();
 
         if (GameOverUI.Instance == null)
@@ -432,6 +432,8 @@ public class MoveBird : MonoBehaviour
         }
 
         GameOverUI.Instance.ShowVictory();
+
+        KiBird.MainMenu.ScoreManager.AddScore(CurrentScore);
     }
 
     /// <summary>
@@ -547,10 +549,10 @@ public class MoveBird : MonoBehaviour
         // Surveillance de la chute pour figer l'oiseau UNIQUEMENT dès qu'il touche le vrai sol
         StartCoroutine(MonitorGroundLanding());
 
-        // Sauvegarde immédiate dans le classement persistant
-        KiBird.MainMenu.ScoreManager.AddScore(CurrentScore);
-
         Debug.Log($"[MoveBird] L'oiseau est mort ! Score final : {CurrentScore} pts | Survie : {SurvivalTime:F1}s");
+
+        // Invoqué AVANT AddScore : GameOverUI doit comparer le score de ce vol au meilleur
+        // score des vols précédents, pas au classement déjà mis à jour avec ce même score.
         OnBirdDied?.Invoke();
 
         // Détacher la caméra pour qu'elle suive la chute de manière stable sans vriller avec la carcasse
@@ -567,6 +569,9 @@ public class MoveBird : MonoBehaviour
             var go = new GameObject("GameOverManager");
             go.AddComponent<GameOverUI>();
         }
+
+        // Sauvegarde dans le classement persistant, une fois GameOverUI averti.
+        KiBird.MainMenu.ScoreManager.AddScore(CurrentScore);
     }
 
     /// <summary>
