@@ -330,7 +330,7 @@ def main() -> None:
     parser.add_argument("--bg-filter", action=argparse.BooleanOptionalAction, default=True,
                         help="Masque le fond au-dela de --bg-max-distance avec la profondeur IR "
                              "avant d'envoyer l'image a MediaPipe")
-    parser.add_argument("--bg-max-distance", type=float, default=2.0,
+    parser.add_argument("--bg-max-distance", type=float, default=2.5,
                         help="Distance (m) au-dela de laquelle les pixels sont noircis")
     parser.add_argument("--preview", action="store_true",
                         help="Ouvre une fenetre camera avec overlay du squelette MediaPipe et des "
@@ -338,7 +338,7 @@ def main() -> None:
     parser.add_argument("--preview-scale", type=float, default=1.0,
                         help="Facteur d'echelle de la fenetre --preview (ex. 0.5 pour une demi-taille)")
     parser.add_argument("--min-distance", type=float, default=1.0)
-    parser.add_argument("--max-distance", type=float, default=2.0)
+    parser.add_argument("--max-distance", type=float, default=2.5)
     parser.add_argument("--auto-center", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
 
