@@ -43,7 +43,7 @@ TILT_STATUS_MOVING = 0x04
 _ANGLE_UNKNOWN = -128
 
 # Butees materielles du moteur : libfreenect accepte +/-31 deg, on garde une marge.
-TILT_MIN_DEG = -28.0
+TILT_MIN_DEG = 0.0
 TILT_MAX_DEG = 28.0
 
 # Ordonnee visee pour la tete, en coordonnees image normalisees (0 = haut, 1 = bas).

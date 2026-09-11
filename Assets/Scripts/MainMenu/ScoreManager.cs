@@ -10,24 +10,12 @@ namespace KiBird.MainMenu
         private const string LeaderboardKey = "KiBird_Leaderboard";
         private const int MaxEntries = 5;
 
-        /// <summary>Meilleur score de la session active, conservé entre les rechargements de scène.</summary>
-        public static int SessionBestScore { get; private set; }
-
         public static int GetLastScore() => PlayerPrefs.GetInt(LastScoreKey, 0);
 
         public static int GetBestScore()
         {
             List<int> top = GetTopScores();
-            int topScore = top.Count > 0 ? top[0] : 0;
-            return Mathf.Max(SessionBestScore, topScore);
-        }
-
-        public static void UpdateSessionBest(int score)
-        {
-            if (score > SessionBestScore)
-            {
-                SessionBestScore = score;
-            }
+            return top.Count > 0 ? top[0] : 0;
         }
 
         /// <summary>Meilleurs scores enregistrés sur ce poste, du plus élevé au plus faible.</summary>
@@ -50,7 +38,6 @@ namespace KiBird.MainMenu
 
         public static void AddScore(int score)
         {
-            UpdateSessionBest(score);
             PlayerPrefs.SetInt(LastScoreKey, score);
 
             List<int> scores = GetTopScores();

@@ -119,3 +119,9 @@ tools/kinect_bridge/dist/
 tools/kinect_bridge/build/
 
 implementation_plan.md
+
+build
+UnityPlayer.so
+*_BackUpThisFolder_ButDontShipItWithYourGame/
+*_Data/
+libdecor-*
